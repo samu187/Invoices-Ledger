@@ -18,7 +18,7 @@ uv sync
 uv run app --help
 ```
 
-`app init-db` creates missing tables without deleting data or seeding. `app web` remains a placeholder; `app seed` adds reference data and opening bank funding. `invoice-ledger` is an alias for `app`.
+`app init-db` creates missing tables without deleting data or seeding. `invoice-ledger web` starts the minimal web shell; `app seed` adds reference data and opening bank funding. `invoice-ledger` is an alias for `app`.
 Module invocation also works: `uv run python -m app.cli --help`.
 
 The backend is an installable package with a flat `app/` directory (no `src/`).
@@ -174,3 +174,31 @@ shows only entry headers: ID, posting date, type, source IDs, and description.
 `show` displays every account line with GBP debits/credits, totals, and whether
 they balance. Both commands are read-only. An entry with no lines is explicitly
 labelled empty rather than balanced. Resetting the seed does not restart IDs.
+
+## Web shell
+
+From backend/ with Docker PostgreSQL running:
+
+```bash
+uv run invoice-ledger web
+```
+
+Open http://127.0.0.1:8888. Optional flags: `--host 0.0.0.0 --port 8888`.
+The command follows the current `invoice-ledger` script entry in pyproject.toml.
+
+FastAPI lives in app/main.py. Startup creates missing tables and calls the seed
+without reset. The seed completion marker prevents duplicate data on later starts;
+it is not based on whether every table has rows (empty invoices/payments are normal).
+Existing schemas are not migrated. Startup fails if database setup fails.
+
+`/` shows a placeholder until app/static/index.html exists, then serves that file.
+`/static` serves frontend assets; configure the future Vite build base as `/static/`.
+An empty router in app/api/routes.py is included under `/api`. There are no business
+API routes or React frontend yet. This is one web server; no SPA fallback yet.
+
+Web binding defaults to 127.0.0.1:8888 locally. PORT overrides the default port;
+HOST overrides the address. On Railway (RAILWAY_ENVIRONMENT_ID is present), the
+default address becomes 0.0.0.0 and PORT supplies the listening port. Explicit
+--host/--port flags override environment variables. These are process environment
+variables; they do not depend on loading database settings from .env. Railway
+provides the public URL separately; it is not the address Uvicorn binds to.

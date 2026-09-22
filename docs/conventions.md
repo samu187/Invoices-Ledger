@@ -141,9 +141,9 @@ seed and demo seed may be separate phases under one seed command. Demo invoice
 and payment seeds call the normal accounting services when those are implemented.
 
 Expose setup explicitly through Typer commands: `app init-db` creates missing
-tables and `app seed` populates initial data. Normal business commands and web
-startup check readiness and give an actionable error if setup is missing, without
-creating tables or seeding automatically. Command help requires no connection.
+tables and `app seed` populates initial data. Normal business CLI commands do not initialize automatically. The minimal web
+app explicitly creates missing tables and calls the repeat-safe seed at startup,
+without reset; it stops startup if setup fails. Command help requires no connection.
 On Railway, setup can be a separate deployment step before `app web` starts.
 `backend/app/models.py` contains the SQLAlchemy classes; `backend/app/db.py` handles connection/session
 creation and explicit initialization. Payment currency is obtained from its linked

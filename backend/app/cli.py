@@ -1,5 +1,6 @@
 """CLI input and output; business logic lives in services."""
 
+import os
 import typer
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
@@ -9,14 +10,14 @@ from app.services.suppliers import create_supplier, list_suppliers
 from app.services.accounts import list_accounts, get_account_activity
 from app.services.journals import list_journals, get_journal
 
+
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)
+
 suppliers = typer.Typer(help="Create and list suppliers.", no_args_is_help=True)
 app.add_typer(suppliers, name="suppliers")
 
-
 accounts = typer.Typer(help="View account balances and transactions in GBP.", no_args_is_help=True)
 app.add_typer(accounts, name="accounts")
-
 
 journals = typer.Typer(help="Browse journals and inspect full entries.", no_args_is_help=True)
 app.add_typer(journals, name="journals")
@@ -130,9 +131,15 @@ def supplier_list():
 
 
 @app.command()
-def web():
-    """Start the web service (placeholder)."""
-    typer.echo("Web service is not implemented yet. CLI accounting comes first.")
+def web(
+    host: str | None = typer.Option(None, envvar="HOST", help="Interface to listen on."),
+    port: int = typer.Option(8888, min=1, max=65535, envvar="PORT"),
+):
+    """Start the web app, creating missing tables and seeding once."""
+    import uvicorn
+
+    host = host or ("0.0.0.0" if os.getenv("RAILWAY_ENVIRONMENT_ID") else "127.0.0.1")
+    uvicorn.run("app.main:app", host=host, port=port)
 
 
 @app.command()

@@ -65,7 +65,8 @@ Extend it for invoice/payment inputs and reuse validation in CLI and API. A sche
 Controllers normally coordinate HTTP requests. Our FastAPI api/ routes serve that
 role, calling shared services, so a separate controllers/ folder would duplicate
 responsibilities. Both CLI and API use services; neither contains accounting logic.
-API and frontend remain deferred until CLI workflows and reports are complete.
+The minimal web shell is implemented in main.py with an empty api/routes.py
+router. Business API routes and frontend remain deferred.
 
 A root Dockerfile and deployment configuration can be added at deployment time to
 build the frontend and copy it into backend/app/static. FastAPI serves the API and
@@ -88,4 +89,5 @@ session wrapper or custom exception hierarchy. Models, transaction boundaries,
 and the repeat-safe PostgreSQL company seed remain explicit.
 
 Explicit seeding currently lives in db.py beside initialization. A separate seed
-module is unnecessary at this size. Seeding still runs only through app seed.
+module is unnecessary at this size. Seeding runs explicitly through the CLI or automatically at web startup, never
+with reset during startup.
