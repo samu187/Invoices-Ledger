@@ -22,3 +22,9 @@ node_modules/
 .pytest_cache/
 .ruff_cache/
 backend/app/static/
+
+# Agents
+AGENTS.MD
+CLAUDE.MD
+agents.md
+claude.md

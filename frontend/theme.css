@@ -1,0 +1,44 @@
+body {
+  color: #253247;
+  background: #fafbfe;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #5263c5;
+  color: white;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.sidebar { background: #edf0fb; border-right-color: #dfe4f4; }
+
+.sidebar-link {
+  padding: 12px 14px;
+  border-radius: 4px;
+  border-left: 3px solid transparent;
+  color: #647084;
+}
+
+.sidebar-link:hover { background: #e3e8fa; }
+
+.sidebar-link[data-active] {
+  background: transparent;
+  border-left-color: #5263c5;
+  color: #36459c;
+  font-weight: 600;
+}
+
+.sidebar-link[data-active]:hover { background: #e3e8fa; }
+
+.mantine-Table-table { font-variant-numeric: tabular-nums; }
+.mantine-Table-th { color: #657084; font-size: 12px; font-weight: 600; }
+.mantine-Table-thead { background: #f5f7fd; }
+.mantine-Table-tfoot { background: #f8f9fb; border-top: 1px solid #dce1e8; }
+.mantine-Table-tfoot .mantine-Table-th { color: #253247; font-size: 13px; }
+.mantine-Table-td { border-color: #edf0f4; }
+.mantine-Anchor-root { color: #4959b0; }

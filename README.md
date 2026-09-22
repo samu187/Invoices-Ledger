@@ -363,3 +363,20 @@ Additional read-only API reports (also available in `/docs`):
 Invoice balances are included in invoice list/detail. The existing
 `/api/invoices/{id}/payments` provides original-currency and GBP payable running
 balances. Reports currently cover company 1, all time except the dated P&L.
+
+## Frontend scaffold
+
+React/TypeScript with Vite and Mantine lives in `frontend/`. The sidebar opens
+Accounts by default; Invoices, Payments and Suppliers are placeholders. Accounts
+shows the all-time GBP trial balance above a divider and the selected account's
+transactions below. Account 2000 (payables) is selected initially; click an account
+name or row to select another. Balances and totals come from the existing API.
+
+From `frontend/`, run `npm ci` then `npm run build`. This type-checks and builds
+assets into the ignored `backend/app/static/` directory. Build before starting
+FastAPI so its static mount is available. From `backend/`, run
+`uv run invoice-ledger web --port 8888` and open http://127.0.0.1:8888.
+
+For frontend work, `npm run dev` in `frontend/` rebuilds on changes; refresh the
+browser manually. It runs the Vite build watcher, not a second web server.
+Future screens belong in `frontend/views/`, shared UI in `frontend/components/`.
