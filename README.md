@@ -4,6 +4,12 @@ A focused accounting application for recording multi-currency supplier invoices,
 
 ![Invoice Ledger demo](docs/demo.gif)
 
+
+*Outstanding balance for each invoice*
+
+![Invoice Ledger screenshot](docs/outstanding.png)
+
+
 ## Features
 
 - Record GBP, EUR, and USD supplier invoices with VAT.
