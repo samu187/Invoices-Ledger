@@ -2,9 +2,25 @@
 import { useEffect, useState } from 'react';
 import { ActionIcon, Box, CloseButton, Group, Paper, Portal, ScrollArea, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
 
-export default function AssistantPreview() {
+export function BotIcon({ width = 52, height = 56 }: { width?: number; height?: number }) {
+  return (
+    <svg className="bookkeeper-bot" width={width} height={height} viewBox="0 0 64 68" fill="none" aria-hidden="true">
+      <path d="M32 12V6" stroke="#6372c8" strokeWidth="3" strokeLinecap="round" />
+      <circle cx="32" cy="5" r="3" fill="#9a8dde" />
+      <rect x="11" y="13" width="42" height="31" rx="11" fill="#e1e6ff" stroke="#6372c8" strokeWidth="2" />
+      <rect x="5" y="24" width="6" height="12" rx="3" fill="#9a8dde" />
+      <rect x="53" y="24" width="6" height="12" rx="3" fill="#9a8dde" />
+      <g className="bookkeeper-eyes"><circle cx="23" cy="27" r="3" fill="#394780" /><circle cx="41" cy="27" r="3" fill="#394780" /></g>
+      <path d="M27 35Q32 39 37 35" stroke="#6372c8" strokeWidth="2" strokeLinecap="round" />
+      <rect x="11" y="42" width="42" height="20" rx="3" fill="#e3e6ec" stroke="#8792aa" strokeWidth="1.5" />
+      <circle cx="32" cy="52" r="3" fill="#b4bdcd" />
+      <path d="M14 62H50" stroke="#8792aa" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export default function AssistantPreview({ opened, onOpenedChange }: { opened: boolean; onOpenedChange: (opened: boolean) => void }) {
   // 2. State
-  const [opened, setOpened] = useState(false);
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>([]);
 
@@ -15,11 +31,11 @@ export default function AssistantPreview() {
       if (event.key !== 'Escape') return;
       event.preventDefault();
       event.stopPropagation();
-      setOpened(false);
+      onOpenedChange(false);
     }
     window.addEventListener('keydown', closeOnEscape, true);
     return () => window.removeEventListener('keydown', closeOnEscape, true);
-  }, [opened]);
+  }, [opened, onOpenedChange]);
 
   // 4. Helpers: local preview only
   function sendMessage(event: React.FormEvent<HTMLFormElement>) {
@@ -35,20 +51,9 @@ export default function AssistantPreview() {
   // 5. View
   return (
     <>
-      <UnstyledButton className="bookkeeper-launcher" onClick={() => setOpened(!opened)} aria-expanded={opened} aria-controls="bookkeeper-chat">
+      <UnstyledButton className="bookkeeper-launcher" onClick={() => onOpenedChange(!opened)} aria-expanded={opened} aria-controls="bookkeeper-chat">
         <Group gap="sm" wrap="nowrap">
-          <svg className="bookkeeper-bot" width="52" height="56" viewBox="0 0 64 68" fill="none" aria-hidden="true">
-            <path d="M32 12V6" stroke="#6372c8" strokeWidth="3" strokeLinecap="round" />
-            <circle cx="32" cy="5" r="3" fill="#9a8dde" />
-            <rect x="11" y="13" width="42" height="31" rx="11" fill="#e1e6ff" stroke="#6372c8" strokeWidth="2" />
-            <rect x="5" y="24" width="6" height="12" rx="3" fill="#9a8dde" />
-            <rect x="53" y="24" width="6" height="12" rx="3" fill="#9a8dde" />
-            <g className="bookkeeper-eyes"><circle cx="23" cy="27" r="3" fill="#394780" /><circle cx="41" cy="27" r="3" fill="#394780" /></g>
-            <path d="M27 35Q32 39 37 35" stroke="#6372c8" strokeWidth="2" strokeLinecap="round" />
-            <rect x="11" y="42" width="42" height="20" rx="3" fill="#e3e6ec" stroke="#8792aa" strokeWidth="1.5" />
-            <circle cx="32" cy="52" r="3" fill="#b4bdcd" />
-            <path d="M14 62H50" stroke="#8792aa" strokeWidth="2" strokeLinecap="round" />
-          </svg>
+          <BotIcon />
           <div><Text size="sm" fw={600}>Bookkeeping assistant</Text><Text size="xs" c="dimmed">AI Bot Coming soon!</Text></div>
         </Group>
       </UnstyledButton>
@@ -58,7 +63,7 @@ export default function AssistantPreview() {
           <Stack gap="sm">
             <Group justify="space-between">
               <div><Text size="sm" fw={600}>Bookkeeping assistant</Text><Text size="xs" c="dimmed">Local preview · Not connected to AI</Text></div>
-              <CloseButton aria-label="Close assistant" onClick={() => setOpened(false)} />
+              <CloseButton aria-label="Close assistant" onClick={() => onOpenedChange(false)} />
             </Group>
             {messages.length === 0 ? <Text size="sm" c="dimmed">What would you like to record? Try “Add a supplier called River Studio”.</Text> : (
               <ScrollArea.Autosize mah={230} viewportRef={(element) => { if (element) element.scrollTop = element.scrollHeight; }}>

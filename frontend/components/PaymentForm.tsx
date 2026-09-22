@@ -4,7 +4,7 @@ import { Alert, Anchor, Button, Group, Paper, Select, SimpleGrid, Stack, Text, T
 import { DatePickerInput } from '@mantine/dates';
 import { type Invoice, isZero, money } from '../views/invoiceData';
 
-export default function PaymentForm({ onBack, onCreated }: { onBack: () => void; onCreated: (invoiceId: number) => void }) {
+export default function PaymentForm({ onBack, onCreated, onOpenInvoice }: { onBack: () => void; onCreated: (paymentId: number) => void; onOpenInvoice: (invoiceId: number) => void }) {
   // 2. State
   const today = new Date();
   const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -86,7 +86,8 @@ export default function PaymentForm({ onBack, onCreated }: { onBack: () => void;
         const data = await response.json();
         throw new Error(typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map((item: { msg: string }) => item.msg).join(' ') : 'Could not record payment.');
       }
-      onCreated(invoice.id);
+      const result: { payment_id: number } = await response.json();
+      onCreated(result.payment_id);
     } catch (error) {
       setError(error instanceof TypeError ? 'The response could not be confirmed. Check the invoice before creating another payment. Retrying this form uses the same request ID.' : error instanceof Error ? error.message : 'Could not record payment.');
     } finally {
@@ -108,7 +109,7 @@ export default function PaymentForm({ onBack, onCreated }: { onBack: () => void;
                 <Select label="Supplier" placeholder="Select a supplier first" searchable required value={supplierId} onChange={selectSupplier} disabled={saving} nothingFoundMessage="No matching suppliers" data={suppliers.filter((supplier) => invoices.some((row) => row.supplier_id === supplier.id)).map((supplier) => ({ value: String(supplier.id), label: suppliers.filter((row) => row.name === supplier.name).length > 1 ? `${supplier.name} · #${supplier.id}` : supplier.name }))} />
                 <Select label="Invoice number" placeholder="Select an outstanding invoice" searchable required value={invoiceId} onChange={selectInvoice} disabled={!supplierId || saving} nothingFoundMessage="No outstanding invoices" data={invoices.filter((row) => row.supplier_id === Number(supplierId)).map((row) => ({ value: String(row.id), label: row.number }))} />
               </SimpleGrid>
-              {invoice && <Anchor component="button" size="sm" ta="left" disabled={saving} onClick={() => onCreated(invoice.id)}>View invoice ↗</Anchor>}
+              {invoice && <Anchor component="button" size="sm" ta="left" disabled={saving} onClick={() => onOpenInvoice(invoice.id)}>View invoice ↗</Anchor>}
               <SimpleGrid cols={{ base: 1, sm: 2 }}>
                 {invoice && <TextInput label="Currency" value={invoice.currency} readOnly />}
                 <TextInput label="Amount to pay" description={invoice ? `Outstanding: ${invoice.currency} ${money(invoice.balance)}` : undefined} inputWrapperOrder={['label', 'input', 'description', 'error']} placeholder="Enter payment amount" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.currentTarget.value)} required disabled={!invoice || saving} />

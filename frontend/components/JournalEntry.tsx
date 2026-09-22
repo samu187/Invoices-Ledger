@@ -14,11 +14,10 @@ type Journal = {
   total_credit: string;
 };
 
-export default function JournalEntry({ id, accountCode, onSelectAccount, onOpenInvoice }: {
+export default function JournalEntry({ id, onOpenInvoice, onOpenPayment }: {
   id: number;
-  accountCode: string;
-  onSelectAccount: (code: string) => void;
   onOpenInvoice: (id: number) => void;
+  onOpenPayment: (id: number) => void;
 }) {
   // 2. State
   const [journal, setJournal] = useState<Journal | null>(null);
@@ -62,7 +61,7 @@ export default function JournalEntry({ id, accountCode, onSelectAccount, onOpenI
         <Text size="sm" c="dimmed">
           {journal.invoice_id !== null && <Anchor component="button" size="sm" onClick={() => onOpenInvoice(journal.invoice_id!)}>Invoice #{journal.invoice_id}</Anchor>}
           {journal.invoice_id !== null && journal.payment_id !== null && ' · '}
-          {journal.payment_id !== null && `Payment #${journal.payment_id}`}
+          {journal.payment_id !== null && <Anchor component="button" size="sm" onClick={() => onOpenPayment(journal.payment_id!)}>Payment #{journal.payment_id}</Anchor>}
         </Text>
       )}
       <ScrollArea.Autosize mah={360}>
@@ -70,12 +69,8 @@ export default function JournalEntry({ id, accountCode, onSelectAccount, onOpenI
           <Table.Thead><Table.Tr><Table.Th>Code</Table.Th><Table.Th>Account</Table.Th><Table.Th ta="right">Debit</Table.Th><Table.Th ta="right">Credit</Table.Th></Table.Tr></Table.Thead>
           <Table.Tbody>
             {journal.lines.map((line, index) => (
-              <Table.Tr key={index} bg={line.code === accountCode ? '#edf1f6' : undefined} onClick={() => onSelectAccount(line.code)} style={{ cursor: 'pointer' }}>
-                <Table.Td>
-                  <Anchor component="button" size="sm" aria-label={`Open ledger for account ${line.code}`} onClick={(event) => { event.stopPropagation(); onSelectAccount(line.code); }}>
-                    {line.code}
-                  </Anchor>
-                </Table.Td><Table.Td>{line.name}</Table.Td>
+              <Table.Tr key={index}>
+                <Table.Td>{line.code}</Table.Td><Table.Td>{line.name}</Table.Td>
                 <Table.Td ta="right">{money(line.debit)}</Table.Td><Table.Td ta="right">{money(line.credit)}</Table.Td>
               </Table.Tr>
             ))}

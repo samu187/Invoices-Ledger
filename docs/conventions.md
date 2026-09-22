@@ -1,9 +1,3 @@
-# Demo accounting and implementation conventions
-
-This document describes intended behaviour. SQLAlchemy models and explicit table initialization are implemented.
-Supplier services and reference/opening-balance seeding are implemented. Accounting services,
-remaining seeds, reports, API, and frontend are not implemented yet.
-
 ## Company, currencies, and rates
 
 Use one fictional company, GBP functional/base currency, and an HSBC GBP bank

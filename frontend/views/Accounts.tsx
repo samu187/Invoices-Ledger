@@ -18,7 +18,7 @@ type AccountDetail = Account & {
   }[];
 };
 
-export default function Accounts({ initialAccountCode = null, initialJournalId, onOpenInvoice }: { initialAccountCode?: string | null; initialJournalId: number | null; onOpenInvoice: (id: number) => void }) {
+export default function Accounts({ initialAccountCode = null, initialJournalId, onOpenInvoice, onOpenPayment }: { initialAccountCode?: string | null; initialJournalId: number | null; onOpenInvoice: (id: number) => void; onOpenPayment: (id: number) => void }) {
   // 2. State
   const [selectedCode, setSelectedCode] = useState(initialAccountCode);
   const [journalId, setJournalId] = useState<number | null>(initialJournalId);
@@ -120,7 +120,7 @@ export default function Accounts({ initialAccountCode = null, initialJournalId, 
               <Tooltip label="Back to account balances"><Kbd size="xs">Esc</Kbd></Tooltip>
             </Group>
             <ScrollArea style={{ flex: 1, minHeight: 0 }}>
-              <JournalEntry key={journalId} id={journalId} accountCode={selectedCode ?? ''} onSelectAccount={selectAccount} onOpenInvoice={onOpenInvoice} />
+              <JournalEntry key={journalId} id={journalId} onOpenInvoice={onOpenInvoice} onOpenPayment={onOpenPayment} />
             </ScrollArea>
           </>
         ) : (

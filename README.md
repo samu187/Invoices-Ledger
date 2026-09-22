@@ -1,12 +1,13 @@
 # Invoice Ledger
 
-Multi-currency supplier invoices, payments, and accounting reports for one fictional
-company. PostgreSQL models and explicit initialization are implemented. Supplier creation/listing and reference seeding are implemented.
-Accounting entries, reports, API, and frontend are subsequent stages.
-
-- [Requirements and development sequence](AGENTS.md)
+Multi-currency supplier invoices, payments, and accounting reports for one fictional company.
 - [Accounting conventions](docs/conventions.md)
-- [Project structure and planned layers](docs/structure.md)
+
+
+
+
+
+
 
 ## Backend
 
@@ -59,16 +60,6 @@ Credentials initialize a new volume only: editing `.env` does not change an
 existing database user's password. If port 5432 is occupied, change POSTGRES_PORT
 and the DATABASE_URL port together.
 
-## Verification
-
-From backend/:
-
-```bash
-uv run python -m unittest discover -s tests -v
-```
-
-These checks do not connect to PostgreSQL. They compile schema definitions and
-check configuration and CLI behaviour. Database commands are run by the user.
 
 ## Supplier example
 
@@ -97,22 +88,7 @@ archiving, and deletion are not implemented in this first example.
 Offline tests use mocks for database interactions; persistence and PostgreSQL
 transaction behaviour still need a user-run check with the commands above.
 
-## Seed contents
 
-| Code | Account | Type |
-| --- | --- | --- |
-| 1000 | HSBC GBP | Asset |
-| 1100 | Input VAT | Asset |
-| 2000 | Accounts payable | Liability |
-| 3000 | Opening equity | Equity |
-| 4900 | Realised FX gains | Income |
-| 5000 | General expenses | Expense |
-| 5100 | Cost of goods sold | Expense |
-| 5200 | Bank fees | Expense |
-| 5300 | Office supplies | Expense |
-| 5400 | Software licenses | Expense |
-| 5500 | Services | Expense |
-| 5900 | Realised FX losses | Expense |
 
 Sample suppliers: Acme Office Supplies, Alpine Design Studio, Hudson Software.
 Opening funding debits HSBC £50,000 and credits opening equity £50,000; it has

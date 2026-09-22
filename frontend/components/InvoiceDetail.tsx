@@ -14,7 +14,7 @@ type Statement = {
   rows: { date: string; reference: string; amount: string; balance: string; payables: string; base_balance: string }[];
 };
 
-export default function InvoiceDetail({ id, onBack, onOpenJournal }: { id: number; onBack: () => void; onOpenJournal: (id: number) => void }) {
+export default function InvoiceDetail({ id, onBack, onOpenJournal, onOpenPayment }: { id: number; onBack: () => void; onOpenJournal: (id: number) => void; onOpenPayment: (id: number) => void }) {
   // 2. State
   const [invoice, setInvoice] = useState<Detail | null>(null);
   const [statement, setStatement] = useState<Statement | null>(null);
@@ -61,7 +61,7 @@ export default function InvoiceDetail({ id, onBack, onOpenJournal }: { id: numbe
     return () => window.removeEventListener('keydown', handleBack);
   }, [onBack]);
 
-  // 4. Helpers: connect statement source references to the invoice's journals
+  // 4. Helpers: connect statement payment references to payment records
   function journalFor(reference: string) {
     return invoice?.journals.find((entry) => reference === (entry.kind === 'invoice' ? `Invoice #${entry.invoice_id}` : `Payment #${entry.payment_id}`));
   }
@@ -122,7 +122,7 @@ export default function InvoiceDetail({ id, onBack, onOpenJournal }: { id: numbe
           <Divider my="sm" color="indigo.1" />
             <Stack gap="sm">
               <Title order={2} size="md" c="dimmed">— Payment statement —</Title>
-              <Text size="xs" c="dimmed">Select a transaction to see its journal. GBP movements release the original liability; they are not cash payments.</Text>
+              <Text size="xs" c="dimmed">Payment labels open their payment details. GBP movements release the original liability; they are not cash payments.</Text>
               {statementError ? <Alert color="red">{statementError}</Alert> : !statement ? <Text role="status">Loading statement…</Text> : (
                 <ScrollArea>
                   <Table highlightOnHover miw={850}>
@@ -130,8 +130,8 @@ export default function InvoiceDetail({ id, onBack, onOpenJournal }: { id: numbe
                     <Table.Tbody>{statement.rows.map((row) => {
                       const entry = journalFor(row.reference);
                       return (
-                        <Table.Tr key={row.reference} onClick={() => entry && onOpenJournal(entry.id)} style={{ cursor: entry ? 'pointer' : 'default' }}>
-                          <Table.Td>{row.date}</Table.Td><Table.Td>{entry ? <Anchor component="button" size="sm" onClick={() => onOpenJournal(entry.id)}>{row.reference}</Anchor> : row.reference}</Table.Td>
+                        <Table.Tr key={row.reference}>
+                          <Table.Td>{row.date}</Table.Td><Table.Td>{entry?.payment_id ? <Anchor component="button" size="sm" onClick={() => onOpenPayment(entry.payment_id!)}>{row.reference}</Anchor> : row.reference}</Table.Td>
                           <Table.Td>{invoice.currency}</Table.Td><Table.Td ta="right">{money(row.amount)}</Table.Td><Table.Td ta="right">{money(row.balance)}</Table.Td><Table.Td>{invoice.base_currency}</Table.Td><Table.Td ta="right">{money(row.payables)}</Table.Td><Table.Td ta="right">{money(row.base_balance)}</Table.Td>
                         </Table.Tr>
                       );

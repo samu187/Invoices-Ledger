@@ -5,7 +5,7 @@ import InvoiceForm from '../components/InvoiceForm';
 import InvoiceDetail from '../components/InvoiceDetail';
 import { type Invoice, money, isZero } from './invoiceData';
 
-export default function Invoices({ initialInvoiceId, onOpenJournal }: { initialInvoiceId: number | null; onOpenJournal: (id: number) => void }) {
+export default function Invoices({ initialInvoiceId, onOpenJournal, onOpenPayment }: { initialInvoiceId: number | null; onOpenJournal: (id: number) => void; onOpenPayment: (id: number) => void }) {
   // 2. State
   const [invoices, setInvoices] = useState<Invoice[] | null>(null);
   const [error, setError] = useState('');
@@ -47,7 +47,7 @@ export default function Invoices({ initialInvoiceId, onOpenJournal }: { initialI
 
   // 5. View: keeping the list mounted preserves filters when returning
   if (adding) return <InvoiceForm onBack={() => setAdding(false)} onCreated={(id) => { setAdding(false); setSelectedId(id); setRevision(revision + 1); }} />;
-  if (selectedId !== null) return <InvoiceDetail key={selectedId} id={selectedId} onBack={() => setSelectedId(null)} onOpenJournal={onOpenJournal} />;
+  if (selectedId !== null) return <InvoiceDetail key={selectedId} id={selectedId} onBack={() => setSelectedId(null)} onOpenJournal={onOpenJournal} onOpenPayment={onOpenPayment} />;
 
   return (
     <Stack gap="lg">
