@@ -1,4 +1,4 @@
-"""Read-only journal summaries and complete entries in GBP."""
+"""Shared journal validation, posting, and reports in GBP."""
 
 from decimal import Decimal
 
@@ -6,6 +6,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Account, JournalEntry, JournalLine
+
+
+# DEBIT == CREDIT CHECK -> run from any service creating new journal entries !!
+def add_journal(db: Session, entry: JournalEntry) -> None:
+    """Validate a complete journal before adding it to the caller's transaction."""
+    if not entry.lines:
+        raise ValueError("A journal entry must have posting lines.")
+    total_debit = sum((line.debit or Decimal("0.00") for line in entry.lines), Decimal("0.00"))
+    total_credit = sum((line.credit or Decimal("0.00") for line in entry.lines), Decimal("0.00"))
+    if total_debit != total_credit:
+        raise ValueError(f"Journal entry is unbalanced: debits {total_debit:.2f}, credits {total_credit:.2f}.")
+    db.add(entry)
 
 
 def list_journals(db: Session) -> list[dict]:

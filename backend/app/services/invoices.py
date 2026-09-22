@@ -1,4 +1,4 @@
-"""Create an invoice and its journal together. Foreign currency comes later."""
+"""Create invoices and their journals together, preserving applied FX rates."""
 
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, Company, Invoice, JournalEntry, JournalLine, Supplier
 from app.schemas import InvoiceCreate
+from app.services.journals import add_journal
+from app.services.fx_rates import get_rates
 
 
 def create_invoice(db: Session, data: InvoiceCreate) -> dict:
@@ -14,8 +16,6 @@ def create_invoice(db: Session, data: InvoiceCreate) -> dict:
         company = db.get(Company, data.company_id)
         if company is None:
             raise ValueError("Company not found. Run the seed first or check company ID.")
-        if data.currency != company.base_currency:
-            raise ValueError("Foreign ccy not yet supported.")
 
         supplier = db.get(Supplier, data.supplier_id)
         if supplier is None or supplier.company_id != data.company_id:
@@ -39,7 +39,16 @@ def create_invoice(db: Session, data: InvoiceCreate) -> dict:
             raise ValueError("Payables account 2000 is missing or has the wrong type.")
 
         rate = Decimal("1")
+        rate_date = data.invoice_date
+        if data.currency != company.base_currency:
+            if company.base_currency != "GBP":
+                raise ValueError("Foreign invoices currently require a GBP base currency.")
+            rates = get_rates(db, data.invoice_date)
+            rate = rates["rates"][data.currency]
+            rate_date = rates["rate_date"]
         base_total = (data.total_amount * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if base_total <= 0 or base_total >= Decimal("10000000000000000"):
+            raise ValueError("Converted invoice total must be at least 0.01 and fit the amount limit.")
         base_net = (base_total / (1 + data.vat_rate / 100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         base_vat = base_total - base_net
 
@@ -57,15 +66,16 @@ def create_invoice(db: Session, data: InvoiceCreate) -> dict:
             supplier_id=data.supplier_id, invoice_number=data.invoice_number,
             invoice_date=data.invoice_date, currency=data.currency,
             total_amount=data.total_amount, vat_rate=data.vat_rate,
-            exchange_rate=rate, rate_date=data.invoice_date,
+            exchange_rate=rate, rate_date=rate_date,
         )
         db.add(invoice)
         db.flush()  # Get the invoice ID for the journal link.
+        
         journal = JournalEntry(
             posting_date=data.invoice_date, kind="invoice", invoice_id=invoice.id,
             description=f"Invoice {data.invoice_number} - {supplier.name}", lines=lines,
         )
-        db.add(journal)
+        add_journal(db, journal)
         db.flush()
         result = {"invoice_id": invoice.id, "journal_id": journal.id}
     return result
@@ -140,3 +150,51 @@ def get_invoice(db: Session, invoice_id: int) -> dict:
     ).order_by(JournalEntry.posting_date, JournalEntry.id)).all()
     report["journals"] = [get_journal(db, entry_id) for entry_id in journal_ids]
     return report
+
+
+def get_invoice_payments(db: Session, invoice_id: int) -> dict:
+    """Running original-currency debt and base payables, using actual postings."""
+    from sqlalchemy import case, func
+    from app.models import Payment
+
+    invoice = db.get(Invoice, invoice_id)
+    if invoice is None:
+        raise ValueError(f"Invoice {invoice_id} not found.")
+    supplier = db.get(Supplier, invoice.supplier_id)
+    company = db.get(Company, supplier.company_id)
+
+    # Include payment journals even when their liability release rounds to zero.
+    postings = db.execute(
+        select(JournalEntry.kind, JournalEntry.payment_id,
+               func.sum(case((Account.code == "2000", JournalLine.credit - JournalLine.debit),
+                             else_=0)).label("movement"))
+        .select_from(JournalEntry)
+        .join(JournalLine, JournalLine.entry_id == JournalEntry.id)
+        .join(Account, Account.id == JournalLine.account_id)
+        .where(JournalEntry.invoice_id == invoice_id,
+               Account.company_id == company.id)
+        .group_by(JournalEntry.kind, JournalEntry.payment_id)
+    ).mappings()
+    movements = {(row["kind"], row["payment_id"]): row["movement"] for row in postings}
+    if movements.get(("invoice", None), 0) <= 0:
+        raise ValueError("Invoice payable posting is missing; cannot show a reliable base balance.")
+
+    balance = invoice.total_amount
+    base_balance = movements[("invoice", None)]
+    rows = [{"date": invoice.invoice_date, "reference": f"Invoice #{invoice.id}",
+             "amount": invoice.total_amount, "balance": balance,
+             "payables": base_balance, "base_balance": base_balance}]
+    payments = db.scalars(select(Payment).where(Payment.invoice_id == invoice_id)
+                          .order_by(Payment.payment_date, Payment.id)).all()
+    for payment in payments:
+        key = ("payment", payment.id)
+        if key not in movements:
+            raise ValueError(f"Payment {payment.id} payable posting is missing; cannot show a reliable base balance.")
+        balance -= payment.amount
+        base_balance += movements[key]
+        rows.append({"date": payment.payment_date, "reference": f"Payment #{payment.id}",
+                     "amount": -payment.amount, "balance": balance,
+                     "payables": movements[key], "base_balance": base_balance})
+    return {"id": invoice.id, "number": invoice.invoice_number, "currency": invoice.currency,
+            "total": invoice.total_amount, "base_currency": company.base_currency,
+            "rows": rows, "balance": balance, "base_balance": base_balance}

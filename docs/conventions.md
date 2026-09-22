@@ -13,21 +13,47 @@ no bank integration. Base currency cannot change after posting begins.
 Rates always mean **GBP per one unit of foreign currency**. GBP uses rate 1.
 Invoice date is assumed to be the accounting recognition date in this demo.
 Fetch historical reference rates on demand using [Frankfurter](https://frankfurter.dev/)
-with its [ECB provider](https://frankfurter.dev/providers/ecb/) explicitly selected.
+with its [Bank of England provider](https://frankfurter.dev/providers/boe/) explicitly selected.
 These are reference rates, not executable bank quotes or necessarily closing rates.
 
 Cache normalized rates in `fx_rates`: foreign currency, base currency, rate,
 rate date and created_at timestamp. The currency pair and rate date form the unique
 key. Copy the applied rate and rate date onto invoices so cache changes never
-rewrite their accounting. No source/provider fields are stored; Frankfurter/ECB
+rewrite their accounting. No source/provider fields are stored; Frankfurter/BoE
 is the fixed application policy.
 
 If the requested date has no published rate, use the most recent available earlier
 rate and display its actual date, as a documented approximation. Do not silently
-accept arbitrarily stale rates. Define a freshness limit when implementing lookup;
+accept arbitrarily stale rates: the maximum age is seven calendar days;
 unavailable/unacceptable rates must produce a clear error. Future-dated invoices
 are excluded initially. No daily scheduler is required; historical lookups support
 backdated invoices. No manual invoice-rate override initially.
+
+The service in `app/services/fx_rates.py` requests GBP as the API base, with
+EUR and USD quotes and `providers=boe`, using the [Frankfurter v2 API](https://frankfurter.dev/).
+For each returned publication date it saves all three rows together:
+
+| Currency | Stored base currency | Stored rate (GBP per currency unit) |
+| --- | --- | --- |
+| GBP | GBP | 1 |
+| EUR | GBP | 1 / API EUR quote (EUR per GBP) |
+| USD | GBP | 1 / API USD quote (USD per GBP) |
+
+For example, USD per GBP = 1.50 gives GBP per USD = 0.6666666667.
+Each quote is inverted independently; no cross rate is calculated. JSON numbers are parsed as Decimal; rates are rounded to ten decimal
+places only after conversion. Both API quotes must have the same publication date. The requested date must
+be the invoice date, not the day the invoice is entered.
+
+`fetch_rates(date)` fetches and validates without database access.
+`get_rates(db, date)` owns a transaction, reuses a complete exact-date cache, or
+fetches and inserts all three rates atomically. Existing rows are preserved on
+conflict. Both return requested date, actual rate date, base currency and a rates
+dictionary. Weekend/holiday lookups may call the API again: we do not assume an
+earlier cached date proves that newer rates are unavailable. No fake weekend rows
+are created. Invoice creation now calls this service with the invoice date for foreign
+currencies. Inside an invoice transaction it uses a savepoint, so cached rates,
+the invoice and its journal roll back together if posting fails. Standalone calls
+create their own transaction. GBP invoices use rate 1 without a lookup.
 
 IAS 21 uses the recognition-date spot rate and permits reasonable approximations;
 our daily reference-rate policy is a demo simplification, not a claim that any
@@ -129,61 +155,31 @@ amounts/rates, valid currencies, supplier/invoice-number uniqueness, no overpaym
 and balanced postings require validation. Serialize settlement of the same invoice
 to prevent concurrent overpayments; prevent duplicate event submission.
 
-## Reports and reconciliation
 
-1. Account balances: assets/liabilities including HSBC, input VAT, and payables.
-2. P&L: expenses and realised FX gains/losses for a selected date range.
-3. Account activity: opening balance, dated source-linked debits/credits, running
-   balance and closing balance. Show debit/credit direction explicitly.
-4. Invoice statement: original payable, payments and applied rates, GBP liability
-   released, FX result, running foreign outstanding and GBP payable balance.
-5. Outstanding invoices: original currency groups and combined GBP carrying value.
-6. Trial balance: every account, debit/credit balances and equality check.
+## Shared journal balance safeguard
 
-Invoice-level balances must sum to the payables control account at the same cutoff.
-All reports must use consistent posting dates for as-of/date-range queries.
-Never sum USD/EUR/GBP amounts together without conversion.
+Every application workflow that creates a journal (invoice, payment, and opening
+funding) calls `add_journal()` in `app/services/journals.py`. Future posting
+workflows must use the same function instead of adding journals directly.
+It rejects an empty journal and checks that total GBP debits equal total GBP
+credits exactly using Decimal, before adding the complete entry to the session.
+There is no rounding tolerance: posting services must resolve rounding first.
 
-The bank may show a credit/negative balance if we seed payments without starting
-funds. Seed explicit opening GBP funding (debit HSBC, credit opening equity) so
-the demo starts with a realistic bank balance; label it separately from P&L.
+The helper does not commit. It runs inside the business event's transaction, so
+an unbalanced journal raises ValueError and rolls back the invoice/payment or
+seed operation as well. Never change posting lines after this validation.
 
-## Initialization and delivery
 
-PostgreSQL only, selected through DATABASE_URL. Use Docker Compose and a named
-volume locally so data survives shutdowns and container recreation. Secrets stay
-outside Git. SQLAlchemy models precede database initialization and feature work.
+### Today's invoices: previous-day rate
 
-No migrations initially: create_all creates missing tables only. Initial seeds
-are transactional and tracked so restarting never duplicates/reset data. Reference
-seed and demo seed may be separate phases under one seed command. Demo invoice
-and payment seeds call the normal accounting services when those are implemented.
+The daily source is **Bank of England data through the Frankfurter API**,
+not an ECB API. For an invoice dated today, this demo requests yesterday's
+rate to avoid depending on today's publication time. For a historical invoice,
+request its invoice date. If that target date has no published rate (for example,
+a weekend or holiday), use the latest available earlier publication, within the
+seven-calendar-day limit measured from the invoice date. Save and display the
+actual publication date; never label a Friday rate as a Sunday rate.
 
-Expose setup explicitly through Typer commands: `app init-db` creates missing
-tables and `app seed` populates initial data. Normal business CLI commands do not initialize automatically. The minimal web
-app explicitly creates missing tables and calls the repeat-safe seed at startup,
-without reset; it stops startup if setup fails. Command help requires no connection.
-On Railway, setup can be a separate deployment step before `app web` starts.
-`backend/app/models.py` contains the SQLAlchemy classes; `backend/app/db.py` handles connection/session
-creation and explicit initialization. Payment currency is obtained from its linked
-invoice. Journal lines inherit invoice traceability through their entry. A composite
-foreign key ensures payment journal entries reference the same invoice as their
-payment; a partial unique index prevents duplicate invoice recognition journals.
-
-Database constraints validate individual amounts, currencies, source links, and
-posting sides. Cross-row rules (balanced journals, no overpayments, correct account
-types, posting-date order, and immutable posted events) still require the future
-accounting services; models alone do not implement these rules. The single company
-has id 1 and a GBP base currency. Seed completion markers are reserved for later;
-initialization inserts no rows.
-
-Develop CLI entries/reports first. Add web API/frontend only after CLI review.
-Deploy to a new Railway database later. Authentication and learning migrations
-are optional final stages; no users/sessions are needed now.
-
-The reference_data_v1 seed creates/reuses company id 1, twelve accounts, and three
-sample suppliers. It posts GBP 50,000 debit HSBC / credit opening equity dated
-1 January 2026. A seed_runs marker is reserved with ON CONFLICT DO NOTHING in the
-same transaction; any failure rolls back both marker and data. Repeating the seed
-does not add funding again or overwrite records. No invoice/payment or FX-rate
-seeding is implemented yet.
+The FX service applies this policy to both API requests and cache lookups.
+The caller supplies the invoice date. Once an invoice is posted, its saved rate
+and rate date stay fixed even if entered-day or reference rates later change.

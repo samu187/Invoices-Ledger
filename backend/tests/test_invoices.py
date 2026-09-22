@@ -1,5 +1,6 @@
 """Invoice posting checks with mock sessions; no live database writes."""
 
+from datetime import date
 from decimal import Decimal
 import unittest
 from unittest.mock import MagicMock, patch
@@ -61,12 +62,35 @@ class InvoiceTests(unittest.TestCase):
         self.assertEqual(sum(line.debit for line in journal.lines), sum(line.credit for line in journal.lines))
         self.assertTrue(all(line.debit > 0 or line.credit > 0 for line in journal.lines))
 
-    def test_foreign_currency_rejected_before_writes(self):
-        db = self.session()
-        data = self.data().model_copy(update={"currency": "EUR"})
-        with self.assertRaisesRegex(ValueError, "Foreign ccy not yet supported"):
+    @patch("app.services.invoices.get_rates")
+    def test_foreign_invoice_uses_invoice_date_and_stores_applied_rate(self, rates):
+        for currency, rate in (("EUR", "0.8"), ("USD", "0.75")):
+            db = self.session()
+            data = self.data().model_copy(update={"currency": currency, "invoice_date": date(2026, 1, 4)})
+            rates.return_value = {"rates": {currency: Decimal(rate)}, "rate_date": date(2026, 1, 2)}
             create_invoice(db, data)
+            rates.assert_called_with(db, date(2026, 1, 4))
+            invoice, journal = [call.args[0] for call in db.add.call_args_list]
+            self.assertEqual(invoice.exchange_rate, Decimal(rate))
+            self.assertEqual(invoice.rate_date, date(2026, 1, 2))
+            self.assertEqual(invoice.total_amount, Decimal("120"))
+            total = Decimal("120") * Decimal(rate)
+            self.assertEqual(journal.lines[-1].credit, total)
+            self.assertEqual(journal.lines[0].debit, total / Decimal("1.2"))
+            self.assertEqual(sum(line.debit for line in journal.lines), total)
+
+    @patch("app.services.invoices.get_rates")
+    def test_gbp_never_fetches_rates(self, rates):
+        create_invoice(self.session(), self.data())
+        rates.assert_not_called()
+
+    @patch("app.services.invoices.get_rates", side_effect=ValueError("FX unavailable"))
+    def test_failed_rate_lookup_does_not_save_invoice(self, rates):
+        db = self.session()
+        with self.assertRaisesRegex(ValueError, "FX unavailable"):
+            create_invoice(db, self.data().model_copy(update={"currency": "USD"}))
         db.add.assert_not_called()
+        self.assertIs(db.begin.return_value.__exit__.call_args.args[0], ValueError)
 
     def test_compares_company_base_not_hardcoded_currency(self):
         db = self.session()

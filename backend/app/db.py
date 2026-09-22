@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.dialects.postgresql import insert
 
 from app.models import Base, Company, Account, Supplier, JournalEntry, JournalLine, SeedRun
+from app.services.journals import add_journal
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -110,5 +111,5 @@ def seed_database(db: Session, reset: bool = False) -> bool:
                 JournalLine(account_id=accounts["3000"].id, debit=Decimal("0.00"), credit=funding),
             ],
         )
-        db.add(opening)
+        add_journal(db, opening)
     return True

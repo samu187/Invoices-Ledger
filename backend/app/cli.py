@@ -1,15 +1,18 @@
 """CLI input and output; business logic lives in services."""
 
 import os
+from datetime import date, timedelta
 import typer
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.schemas import SupplierCreate, InvoiceCreate
+from app.schemas import SupplierCreate, InvoiceCreate, PaymentCreate
+from app.services.payments import create_payment
+from app.services.fx_rates import get_rates
 from app.services.suppliers import create_supplier, list_suppliers
 from app.services.accounts import list_accounts, get_account_activity
 from app.services.journals import list_journals, get_journal
-from app.services.invoices import create_invoice, list_invoices, get_invoice
+from app.services.invoices import create_invoice, list_invoices, get_invoice, get_invoice_payments
 
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)
@@ -26,6 +29,37 @@ app.add_typer(journals, name="journals")
 invoices = typer.Typer(help="Record supplier invoices.", no_args_is_help=True)
 app.add_typer(invoices, name="invoices")
 
+payments = typer.Typer(help="Record invoice payments.", no_args_is_help=True)
+app.add_typer(payments, name="payments")
+
+
+@payments.command("add")
+def payment_add(
+    invoice_id: int = typer.Option(..., "--invoice", prompt="Invoice ID"),
+    currency: str = typer.Option(..., "--currency", prompt="Invoice currency (GBP/EUR/USD)"),
+    amount: str = typer.Option(..., "--amount", prompt="Amount settled in invoice currency"),
+    bank_account: str = typer.Option("1000", "--bank-account", help="1000 = HSBC GBP (only option)."),
+    exchange_rate: str | None = typer.Option(None, "--exchange-rate", help="GBP per unit of invoice currency; required for EUR/USD."),
+    bank_fees: str = typer.Option("0", "--bank-fees", help="Additional bank fees in GBP."),
+    payment_date: str | None = typer.Option(None, "--date", help="YYYY-MM-DD; defaults to today."),
+    reference: str | None = typer.Option(None, "--reference"),
+    request_id: str | None = typer.Option(None, "--request-id", help="Reuse the same UUID when retrying a payment to prevent duplicates."),
+):
+    """Record a payment and its balanced journal, including fees and FX."""
+    values = dict(invoice_id=invoice_id, currency=currency.upper(), amount=amount,
+                  bank_account_code=bank_account, exchange_rate=exchange_rate,
+                  bank_fees=bank_fees or "0", reference=reference)
+    if payment_date is not None:
+        values["payment_date"] = payment_date
+    if request_id is not None:
+        values["request_id"] = request_id
+    data = PaymentCreate(**values)
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        result = create_payment(db, data)
+    typer.echo(f"Created payment #{result['payment_id']} and journal #{result['journal_id']}. Paid from HSBC: GBP {result['bank_total']:,.2f} (including fees).")
+
 
 
 @invoices.command("add")
@@ -39,7 +73,7 @@ def invoice_add(
     vat_rate: str = typer.Option("20", "--vat-rate"),
     invoice_date: str | None = typer.Option(None, "--date", help="YYYY-MM-DD; defaults to today."),
 ):
-    """Save a base-currency invoice and its balanced journal."""
+    """Save an invoice and its balanced journal, looking up foreign FX rates."""
     values = dict(company_id=company_id, supplier_id=supplier_id, invoice_number=invoice_number,
                   currency=currency.upper(), total_amount=total, vat_rate=vat_rate,
                   expense_account_code=expense_account)
@@ -54,13 +88,16 @@ def invoice_add(
 
 
 def print_invoice_summary(row):
-    typer.echo(f"Invoice #{row['id']} | {row['number']} | {row['date']} | {row['supplier']}")
-    typer.echo(f"  {row['currency']}: total {row['total']:,.2f} | paid {row['paid']:,.2f} | balance {row['balance']:,.2f}")
-    typer.echo(f"  Expense: {', '.join(row['expense_accounts']) or '-'}")
-    if row['has_invoice_posting']:
-        typer.echo(f"  {row['base_currency']}: net {row['base_net']:,.2f} | VAT {row['base_vat']:,.2f} | total {row['base_total']:,.2f} | payable balance {row['base_balance']:,.2f}")
-    else:
-        typer.echo("  No invoice journal posting found.")
+    base_amounts = (
+        f"{row['base_currency']}: net {row['base_net']:,.2f} | VAT {row['base_vat']:,.2f}"
+        if row['has_invoice_posting'] else "No invoice journal posting found"
+    )
+    typer.echo(
+        f"Invoice #{row['id']} | {row['number']} | {row['date']} | {row['supplier']} | "
+        f"Expense: {', '.join(row['expense_accounts']) or '-'} | {base_amounts} | "
+        f"{row['currency']}: total {row['total']:,.2f} | paid {row['paid']:,.2f} | "
+        f"balance {row['balance']:,.2f}"
+    )
 
 
 @invoices.command("list")
@@ -74,7 +111,21 @@ def invoice_list(company_id: int = typer.Option(1, "--company-id", min=1)):
         typer.echo("No invoices found.")
     for row in rows:
         print_invoice_summary(row)
-        typer.echo()
+
+
+@invoices.command("payments")
+def invoice_payments(invoice_id: int = typer.Argument(..., min=1)):
+    """Show invoice and payments with original and base running balances."""
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        report = get_invoice_payments(db, invoice_id)
+    typer.echo(f"Invoice #{report['id']} | {report['number']} | Total {report['total']:,.2f} {report['currency']}")
+    typer.echo("Positive = debt added; negative = debt settled. Base payables are journal movements, not cash paid.")
+    typer.echo(f"{'Date':<12} {'Invoice/payment':<19} {'CCY':<5} {'Amount':>13} {'Balance':>13} {'Base CCY':<9} {'Payables':>13} {'Base balance':>13}")
+    for row in report['rows']:
+        typer.echo(f"{row['date'].isoformat():<12} {row['reference']:<19} {report['currency']:<5} {row['amount']:>13,.2f} {row['balance']:>13,.2f} {report['base_currency']:<9} {row['payables']:>13,.2f} {row['base_balance']:>13,.2f}")
+    typer.echo(f"Final balance: {report['balance']:,.2f} {report['currency']} | Base payables: {report['base_balance']:,.2f} {report['base_currency']}")
 
 
 @invoices.command("show")
@@ -212,6 +263,27 @@ def web(
 
     host = host or ("0.0.0.0" if os.getenv("RAILWAY_ENVIRONMENT_ID") else "127.0.0.1")
     uvicorn.run("app.main:app", host=host, port=port)
+
+
+@app.command("get-rates")
+def rates_get(
+    days: int = typer.Option(1, "--days", min=1, help="Number of previous calendar days, starting yesterday."),
+):
+    """Fetch/cache and show GBP, EUR and USD rates in GBP per currency unit."""
+    from app.db import SessionLocal
+
+    today = date.today()
+    for offset in range(1, days + 1):
+        requested_date = today - timedelta(days=offset)
+        try:
+            with SessionLocal() as db:
+                result = get_rates(db, requested_date)
+        except ValueError as exc:
+            typer.echo(f"Skipped {requested_date}: {exc}", err=True)
+            continue
+        typer.echo(f"Requested date: {result['requested_date']} | Rate date: {result['rate_date']} | BoE via Frankfurter")
+        for currency in ("GBP", "EUR", "USD"):
+            typer.echo(f"1 {currency} = {result['rates'][currency]:.10f} GBP")
 
 
 @app.command()

@@ -3,6 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -40,4 +41,25 @@ class InvoiceCreate(BaseModel):
     def check_invoice_date(cls, value: date) -> date:
         if value > date.today():
             raise ValueError("Invoice date cannot be in the future.")
+        return value
+
+
+class PaymentCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    invoice_id: int = Field(gt=0)
+    currency: Literal["GBP", "EUR", "USD"]
+    amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
+    payment_date: date = Field(default_factory=date.today)
+    bank_account_code: Literal["1000"] = "1000"
+    exchange_rate: Decimal | None = Field(default=None, gt=0, max_digits=20, decimal_places=10)
+    bank_fees: Decimal = Field(default=Decimal("0.00"), ge=0, max_digits=18, decimal_places=2)
+    reference: str | None = Field(default=None, max_length=200)
+    request_id: UUID = Field(default_factory=uuid4)
+
+    @field_validator("payment_date")
+    @classmethod
+    def check_payment_date(cls, value: date) -> date:
+        if value > date.today():
+            raise ValueError("Payment date cannot be in the future.")
         return value

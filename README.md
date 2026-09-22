@@ -237,9 +237,9 @@ uv run invoice-ledger invoices show 8
 ```
 
 Replace 8 with an invoice ID. List defaults to company 1; use `--company-id` to
-select another company. Each invoice summary shows supplier, date, number,
-original currency/total/paid/outstanding, expense account, base currency net/VAT/
-total and remaining payable. Original paid amounts are summed from linked payments;
+select another company. Each invoice summary is one line showing supplier, date, number, original
+currency/total/paid/outstanding, expense account, and base net/VAT only. Base total
+and remaining base payable are omitted from the summary. Original paid amounts are summed from linked payments;
 base original amounts come from invoice recognition lines only. Remaining base
 payables include all linked payable postings, including payment journals. Payment
 FX expenses do not change the invoice's original cost. No unlike currencies are
@@ -248,3 +248,48 @@ summed together. Missing invoice journals are flagged explicitly.
 Show adds VAT rate, FX rate/date, and every invoice-linked journal with all debit/
 credit lines and totals. Reports are read-only, all-time, and reuse the journal
 formatter. These demo reports favour simple queries over bulk-query optimization.
+
+## Invoice payment statement
+
+```bash
+uv run invoice-ledger invoices payments 8
+```
+
+Replace 8 with an invoice ID. This read-only table starts with the invoice, then
+shows each payment ordered by payment date and ID. Columns: date, invoice/payment,
+currency, amount, running balance, base currency, payable movement, base balance.
+Payments appear as negative movements. Original amounts come from invoice/payment
+records; base movements come only from account 2000 journal lines, linked by
+invoice ID for recognition and payment ID for settlement. Base cash amounts and
+FX expense do not substitute for liability released. Missing payable postings
+produce an error instead of a misleading zero. The footer shows both final balances.
+No payments yet means the statement contains only the original invoice row.
+
+### Record a payment
+
+From `backend/`, pay GBP 40 of invoice 1, plus a GBP 2 bank fee:
+
+```sh
+uv run invoice-ledger payments add --invoice 1 --currency GBP --amount 40 --bank-account 1000 --bank-fees 2
+uv run invoice-ledger invoices payments 1
+uv run invoice-ledger invoices show 1
+```
+
+HSBC GBP (`1000`) is the only bank option. Fees default to zero, date to today,
+and GBP exchange rate to 1. For a foreign invoice, supply `--exchange-rate`
+as GBP per one unit of invoice currency (e.g. USD rate `0.85`). Payment currency
+must match the invoice. Foreign invoices now look up daily BoE rates through Frankfurter using the
+invoice date (yesterday for invoices dated today). The applied rate and actual
+publication date are shown by `invoice-ledger invoices show ID`.
+
+Fetch/cache all three daily FX rates (run from `backend/`):
+
+```sh
+uv run invoice-ledger get-rates
+uv run invoice-ledger get-rates --days 10
+```
+
+`--days` defaults to 1 and covers previous calendar days starting yesterday.
+Output shows each requested date and actual publication date, with GBP per unit
+of GBP, EUR and USD. Rate lookup failures are reported and skipped; database
+errors stop the command. Each successful day is saved independently.
