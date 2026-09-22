@@ -293,3 +293,31 @@ uv run invoice-ledger get-rates --days 10
 Output shows each requested date and actual publication date, with GBP per unit
 of GBP, EUR and USD. Rate lookup failures are reported and skipped; database
 errors stop the command. Each successful day is saved independently.
+
+### Payment and reconciliation reports
+
+```sh
+uv run invoice-ledger payments list
+uv run invoice-ledger payments show 1
+uv run invoice-ledger invoices outstanding
+uv run invoice-ledger accounts trial-balance
+```
+
+Payment detail includes its full journal. Outstanding invoices show separate
+original-currency totals, their combined GBP carrying balance, and a comparison
+against the payables control account. Trial balance shows debit/credit account
+balances and checks their totals. These reports cover company 1, all time.
+
+For a local end-to-end check, create an invoice, record a partial payment, then
+pay its remaining invoice-currency amount. After each payment run
+`invoices payments ID`, `invoices outstanding`, and `accounts trial-balance`.
+After final settlement both invoice balances should be zero, payables should
+reconcile, and the trial balance should remain balanced. Use `payments show ID`
+to inspect fee and FX postings. Automated tests use mocked sessions; this live
+PostgreSQL check is run by the developer separately.
+
+Small P&L report (inclusive posting dates, GBP; income positive, expenses negative):
+
+```sh
+invoice-ledger accounts pnl --from 2026-09-01 --to 2026-09-30
+```

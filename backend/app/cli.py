@@ -7,12 +7,12 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.schemas import SupplierCreate, InvoiceCreate, PaymentCreate
-from app.services.payments import create_payment
+from app.services.payments import create_payment, list_payments, get_payment
 from app.services.fx_rates import get_rates
 from app.services.suppliers import create_supplier, list_suppliers
-from app.services.accounts import list_accounts, get_account_activity
+from app.services.accounts import list_accounts, get_account_activity, get_trial_balance, get_profit_and_loss
 from app.services.journals import list_journals, get_journal
-from app.services.invoices import create_invoice, list_invoices, get_invoice, get_invoice_payments
+from app.services.invoices import create_invoice, list_invoices, get_invoice, get_invoice_payments, get_outstanding_invoices
 
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)
@@ -31,6 +31,87 @@ app.add_typer(invoices, name="invoices")
 
 payments = typer.Typer(help="Record invoice payments.", no_args_is_help=True)
 app.add_typer(payments, name="payments")
+
+
+def print_payment(row):
+    typer.echo(f"Payment #{row['id']} | {row['payment_date']} | {row['supplier']} | Invoice #{row['invoice_id']} ({row['invoice_number']}) | {row['currency']} {row['amount']:,.2f} | {row['bank_code']} {row['bank_name']} | Rate {row['exchange_rate']} GBP/{row['currency']} | GBP settlement {row['base_amount']:,.2f} | Fees {row['bank_fee']:,.2f} | Withdrawn {row['bank_total']:,.2f}")
+
+
+@payments.command("list")
+def payment_list():
+    """List all payments for the demo company."""
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        rows = list_payments(db)
+    if not rows:
+        typer.echo("No payments found.")
+    for row in rows:
+        print_payment(row)
+
+
+@payments.command("show")
+def payment_show(payment_id: int = typer.Argument(..., min=1)):
+    """Show a payment and its complete journal."""
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        row = get_payment(db, payment_id)
+    print_payment(row)
+    typer.echo(f"Reference: {row['reference'] or '-'}")
+    print_journal(row["journal"])
+
+
+@invoices.command("outstanding")
+def invoice_outstanding():
+    """Show open invoices, currency totals and payables reconciliation."""
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        report = get_outstanding_invoices(db)
+    if not report["rows"]:
+        typer.echo("No outstanding invoices.")
+    for row in report["rows"]:
+        print_invoice_summary(row)
+        typer.echo(f"  GBP carrying balance: {row['base_balance']:,.2f}")
+    for currency, amount in sorted(report["currency_totals"].items()):
+        typer.echo(f"Outstanding {currency}: {amount:,.2f}")
+    typer.echo(f"Total GBP carrying balance: {report['base_total']:,.2f}")
+    typer.echo(f"Payables control GBP: {report['payables']:,.2f} | Difference: {report['difference']:,.2f}")
+    typer.echo("Reconciled." if report["difference"] == 0 else "NOT RECONCILED: investigate the difference.")
+
+
+@accounts.command("pnl")
+def profit_and_loss(
+    start: str = typer.Option(..., "--from", help="Start date YYYY-MM-DD, inclusive."),
+    end: str = typer.Option(..., "--to", help="End date YYYY-MM-DD, inclusive."),
+):
+    """Show income and expenses by posting date, in GBP."""
+    start_date, end_date = date.fromisoformat(start), date.fromisoformat(end)
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        report = get_profit_and_loss(db, start_date, end_date)
+    typer.echo(f"P&L | {start_date} to {end_date} | GBP | Positive = profit, negative = loss")
+    for row in report["rows"]:
+        typer.echo(f"{row['code']:<8} {row['name']:<28} {row['profit']:>14,.2f}")
+    if not report["rows"]:
+        typer.echo("No income or expense postings in this period.")
+    typer.echo(f"Net {'profit' if report['profit'] >= 0 else 'loss'}: GBP {abs(report['profit']):,.2f}")
+
+
+@accounts.command("trial-balance")
+def trial_balance():
+    """Show all-time GBP account balances and check total debits equal credits."""
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        report = get_trial_balance(db)
+    typer.echo(f"{'Code':<8} {'Account':<28} {'Debit GBP':>14} {'Credit GBP':>14}")
+    for row in report["rows"]:
+        typer.echo(f"{row['code']:<8} {row['name']:<28} {row['debit']:>14,.2f} {row['credit']:>14,.2f}")
+    typer.echo(f"{'TOTAL':<37} {report['total_debit']:>14,.2f} {report['total_credit']:>14,.2f}")
+    typer.echo("Balanced." if report["balanced"] else "UNBALANCED: investigate the difference.")
 
 
 @payments.command("add")

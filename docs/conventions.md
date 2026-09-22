@@ -183,3 +183,28 @@ actual publication date; never label a Friday rate as a Sunday rate.
 The FX service applies this policy to both API requests and cache lookups.
 The caller supplies the invoice date. Once an invoice is posted, its saved rate
 and rate date stay fixed even if entered-day or reference rates later change.
+
+## CLI reconciliation reports
+
+`payments list` lists all company-1 payments with original amount, bank rate,
+GBP settlement excluding fees, separate fees and total GBP withdrawn.
+`payments show ID` adds the reference and complete payment journal.
+
+`invoices outstanding` includes any invoice with a nonzero original or base
+balance, so a residual GBP liability cannot disappear merely because the foreign
+amount is settled. Sum original balances separately by currency; compare the
+sum of GBP carrying balances with the credit balance of payables account 2000.
+A mismatch is explicitly reported, including when there are no open invoices.
+
+`accounts trial-balance` splits each account's net balance into a debit or credit
+column and checks equality of the column totals. These are closing balances,
+not cumulative transaction turnover. All reports currently cover company 1 and
+all dates. A balanced trial balance checks arithmetic, not correct classification;
+the invoice-to-payables reconciliation is a separate check.
+
+`accounts pnl --from YYYY-MM-DD --to YYYY-MM-DD` includes company-1 income and
+expense postings within inclusive journal dates. Credit minus debit is the
+profit contribution: expenses normally display negative, income positive.
+The sum is net profit/loss in GBP. Bank, payables, equity and input VAT are
+excluded. Invoice expenses use invoice dates; payment fees and realised FX use
+payment dates. An empty period has zero profit/loss.

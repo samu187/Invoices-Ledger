@@ -97,3 +97,32 @@ def create_payment(db: Session, data: PaymentCreate) -> dict:
         db.flush()
         result = {"payment_id": payment.id, "journal_id": journal.id, "bank_total": bank_total}
     return result
+
+
+def list_payments(db: Session) -> list[dict]:
+    rows = db.execute(
+        select(Payment.id, Payment.payment_date, Payment.invoice_id, Invoice.invoice_number,
+               Supplier.name.label("supplier"), Invoice.currency, Payment.amount,
+               Account.code.label("bank_code"), Account.name.label("bank_name"),
+               Payment.exchange_rate, Payment.base_amount, Payment.bank_fee, Payment.reference,
+               (Payment.base_amount + Payment.bank_fee).label("bank_total"))
+        .join(Invoice, Invoice.id == Payment.invoice_id)
+        .join(Supplier, Supplier.id == Invoice.supplier_id)
+        .join(Account, Account.id == Payment.bank_account_id)
+        .where(Supplier.company_id == 1)
+        .order_by(Payment.payment_date, Payment.id)
+    ).mappings()
+    return [dict(row) for row in rows]
+
+
+def get_payment(db: Session, payment_id: int) -> dict:
+    from app.services.journals import get_journal
+
+    payment = next((row for row in list_payments(db) if row["id"] == payment_id), None)
+    if payment is None:
+        raise ValueError(f"Payment {payment_id} not found.")
+    journal_id = db.scalar(select(JournalEntry.id).where(JournalEntry.payment_id == payment_id))
+    if journal_id is None:
+        raise ValueError(f"Payment {payment_id} journal is missing.")
+    payment["journal"] = get_journal(db, journal_id)
+    return payment

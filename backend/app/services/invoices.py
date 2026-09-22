@@ -198,3 +198,20 @@ def get_invoice_payments(db: Session, invoice_id: int) -> dict:
     return {"id": invoice.id, "number": invoice.invoice_number, "currency": invoice.currency,
             "total": invoice.total_amount, "base_currency": company.base_currency,
             "rows": rows, "balance": balance, "base_balance": base_balance}
+
+
+def get_outstanding_invoices(db: Session) -> dict:
+    from app.services.accounts import get_account_activity
+
+    invoices = list_invoices(db)
+    if any(not row["has_invoice_posting"] for row in invoices):
+        raise ValueError("An invoice is missing its journal; outstanding balances are unreliable.")
+    # Include foreign-settled invoices with an unexpected residual base balance.
+    rows = [row for row in invoices if row["balance"] != 0 or row["base_balance"] != 0]
+    totals = {}
+    for row in rows:
+        totals[row["currency"]] = totals.get(row["currency"], Decimal("0")) + row["balance"]
+    base_total = sum((row["base_balance"] for row in rows), Decimal("0"))
+    payables = -get_account_activity(db, "2000")["balance"]
+    return {"rows": rows, "currency_totals": totals, "base_total": base_total,
+            "payables": payables, "difference": base_total - payables}
