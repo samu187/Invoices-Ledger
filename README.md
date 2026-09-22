@@ -202,3 +202,49 @@ default address becomes 0.0.0.0 and PORT supplies the listening port. Explicit
 --host/--port flags override environment variables. These are process environment
 variables; they do not depend on loading database settings from .env. Railway
 provides the public URL separately; it is not the address Uvicorn binds to.
+
+## Record an invoice (base currency only for now)
+
+From backend/, use a supplier ID from `invoice-ledger suppliers list`:
+
+```bash
+uv run invoice-ledger invoices add --supplier 1 --number INV-001 --currency GBP --total 120 --expense-account 5400
+```
+
+Required inputs are prompted if omitted. Total includes VAT. Optional flags:
+`--company-id 1`, `--vat-rate 20`, `--date YYYY-MM-DD` (defaults to today).
+The supplier and accounts must belong to the selected company. Currency must
+match the company's base currency; otherwise the command reports "Foreign ccy
+not yet supported." and saves nothing. Matching currency uses rate 1 and the
+invoice date as rate date; no FX API or cache is used yet.
+
+The service saves invoice and journal in one transaction. Net/VAT/total base
+amounts are posted to the selected expense account, input VAT (1100), and payables
+(2000); zero VAT creates no VAT line. A total of GBP 120 at 20% posts 100 expense,
+20 VAT, and 120 payables. The command prints the invoice and journal IDs; inspect
+both sides with `uv run invoice-ledger journals show JOURNAL_ID`.
+
+No database schema change is required for company_id input: the invoice belongs
+to its supplier's company. Existing schema must already include the recent
+invoice vat_rate change. Offline tests cover calculations/validation and mock
+transaction boundaries; live PostgreSQL verification is performed by the user.
+
+## Invoice reports
+
+```bash
+uv run invoice-ledger invoices list
+uv run invoice-ledger invoices show 8
+```
+
+Replace 8 with an invoice ID. List defaults to company 1; use `--company-id` to
+select another company. Each invoice summary shows supplier, date, number,
+original currency/total/paid/outstanding, expense account, base currency net/VAT/
+total and remaining payable. Original paid amounts are summed from linked payments;
+base original amounts come from invoice recognition lines only. Remaining base
+payables include all linked payable postings, including payment journals. Payment
+FX expenses do not change the invoice's original cost. No unlike currencies are
+summed together. Missing invoice journals are flagged explicitly.
+
+Show adds VAT rate, FX rate/date, and every invoice-linked journal with all debit/
+credit lines and totals. Reports are read-only, all-time, and reuse the journal
+formatter. These demo reports favour simple queries over bulk-query optimization.

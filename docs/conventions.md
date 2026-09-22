@@ -17,9 +17,10 @@ with its [ECB provider](https://frankfurter.dev/providers/ecb/) explicitly selec
 These are reference rates, not executable bank quotes or necessarily closing rates.
 
 Cache normalized rates in `fx_rates`: foreign currency, base currency, rate,
-rate date, provider, and retrieval timestamp, with an appropriate unique key.
-Copy the applied rate, rate date, and source onto posted transactions so cache
-changes never rewrite their accounting. ECB cross-rates must retain provenance.
+rate date and created_at timestamp. The currency pair and rate date form the unique
+key. Copy the applied rate and rate date onto invoices so cache changes never
+rewrite their accounting. No source/provider fields are stored; Frankfurter/ECB
+is the fixed application policy.
 
 If the requested date has no published rate, use the most recent available earlier
 rate and display its actual date, as a documented approximation. Do not silently
@@ -38,12 +39,12 @@ previous-day rate is always appropriate. See [IAS 21, paragraphs 21–22](https:
 | --- | --- |
 | companies | Fictional company and fixed base currency |
 | suppliers | Supplier identity |
-| invoices | Supplier reference/date, currency, net/VAT/total, rate and base amounts |
+| invoices | Supplier reference/date, currency, VAT-inclusive total, VAT rate, FX rate/date |
 | payments | Invoice reference, date, foreign amount settled, actual GBP cost/rate |
 | accounts | Account code/name/type, including HSBC, payables, expense, VAT, FX |
 | journal_entries | Dated posting event and source invoice/payment |
 | journal_lines | Account, GBP debit/credit, and invoice traceability |
-| fx_rates | Cached reference rates and provenance |
+| fx_rates | Cached reference rates, dates, and creation timestamps |
 | seed_runs | Completion markers for future transactional seeds |
 
 Payments must be stored, not inferred from a current balance. Each payment belongs
@@ -58,12 +59,30 @@ added explicitly later. No period-end unrealised FX revaluation initially.
 
 ## Invoice recognition and VAT
 
-Assume the net invoice amount is an expense and entered VAT is fully recoverable
+Invoice input requires the VAT-inclusive total and currency. VAT rate is optional
+and defaults to 20 (percent); 0 is allowed. The invoice date defaults to today.
+Using ROUND_HALF_UP, the service will calculate:
+
+```text
+base total = round(original total × FX rate, 2)
+base net = round(base total / (1 + vat_rate / 100), 2)
+base VAT = base total - base net
+```
+
+These GBP amounts are stored only in journal lines. Original-currency net and VAT
+can be derived for display from the original total and VAT rate.
+This is a demo default, not a rule that every foreign invoice carries UK VAT.
+Invoice stores total_amount and vat_rate, but no net_amount, vat_amount, or base
+amount columns. The original base liability is the payables credit in the invoice
+recognition journal, not its remaining balance after payments.
+
+Assume the net invoice amount is an expense and calculated VAT is fully recoverable
 input VAT, translated at the invoice rate. This deliberately omits jurisdictional
 VAT rules, reverse charge, VAT returns, and HMRC integration.
 
 For a USD 100 invoice with no VAT at 0.85 GBP/USD, store original total 100 USD,
-rate 0.85, and base total GBP 85. Post debit expense 85, credit payables 85.
+rate 0.85, and VAT rate 0 on the invoice. Post GBP debit expense 85, credit
+payables 85 in its linked journal.
 With VAT, debit expense for base net and input VAT for base VAT; credit payables
 for base total. Round components consistently and ensure their sum equals the
 posted total; never produce an unbalanced journal from independent rounding.

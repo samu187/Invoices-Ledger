@@ -49,8 +49,8 @@ class Invoice(Base):
     __table_args__ = (
         UniqueConstraint("supplier_id", "invoice_number"),
         CheckConstraint("currency IN ('GBP', 'EUR', 'USD')", name="valid_currency"),
-        CheckConstraint("net_amount >= 0 AND vat_amount >= 0 AND total_amount > 0 AND total_amount = net_amount + vat_amount", name="valid_amounts"),
-        CheckConstraint("base_net_amount >= 0 AND base_vat_amount >= 0 AND base_total_amount > 0 AND base_total_amount = base_net_amount + base_vat_amount", name="valid_base_amounts"),
+        CheckConstraint("total_amount > 0", name="positive_total"),
+        CheckConstraint("vat_rate >= 0 AND vat_rate <= 100", name="valid_vat_rate"),
         CheckConstraint("exchange_rate > 0 AND (currency <> 'GBP' OR exchange_rate = 1)", name="valid_rate"),
         CheckConstraint("rate_date <= invoice_date", name="rate_not_future"),
     )
@@ -61,15 +61,10 @@ class Invoice(Base):
     invoice_number: Mapped[str] = mapped_column(String(100))
     invoice_date: Mapped[date]
     currency: Mapped[str] = mapped_column(String(3))
-    net_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
-    vat_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    vat_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("20.00"))
     exchange_rate: Mapped[Decimal] = mapped_column(Numeric(20, 10))
     rate_date: Mapped[date]
-    rate_source: Mapped[str] = mapped_column(String(100))
-    base_net_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
-    base_vat_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
-    base_total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     payments: Mapped[list["Payment"]] = relationship(back_populates="invoice", passive_deletes="all")
 
 
@@ -131,7 +126,7 @@ class JournalLine(Base):
 class FxRate(Base):
     __tablename__ = "fx_rates"
     __table_args__ = (
-        UniqueConstraint("currency", "base_currency", "rate_date", "source"),
+        UniqueConstraint("currency", "base_currency", "rate_date"),
         CheckConstraint("currency IN ('GBP', 'EUR', 'USD') AND base_currency = 'GBP'", name="valid_currencies"),
         CheckConstraint("rate > 0 AND (currency <> 'GBP' OR rate = 1)", name="valid_rate"),
     )
@@ -142,8 +137,6 @@ class FxRate(Base):
     base_currency: Mapped[str] = mapped_column(String(3), default="GBP")
     rate_date: Mapped[date]
     rate: Mapped[Decimal] = mapped_column(Numeric(20, 10))
-    source: Mapped[str] = mapped_column(String(100))
-    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class SeedRun(Base):
