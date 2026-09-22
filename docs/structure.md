@@ -24,7 +24,6 @@ INVOICE-LEDGER/
 │       ├── db.py
 │       ├── models.py
 │       ├── schemas.py
-│       ├── seed.py
 │       └── services/
 │           ├── __init__.py
 │           └── suppliers.py
@@ -42,7 +41,6 @@ Planned additions, created only as each development stage starts:
 backend/app/
 ├── schemas.py               # Pydantic input/output validation, shared where useful
 ├── services/                # Accounting, payments, FX lookup, and reporting logic
-├── seed.py                  # Explicit reference/demo seed
 ├── main.py                  # FastAPI application assembly
 ├── api/                     # Thin HTTP routes calling services
 └── static/                  # Generated React production build, ignored
@@ -77,3 +75,17 @@ uv is initialized only in backend. Build configuration sets module-name = "app"
 and module-root = ""; command entry points target app.cli:main. No Python version
 file is needed because pyproject.toml declares the supported version. The project
 is named invoice-ledger even though its importable package is app.
+
+Database wiring follows DATABASE_URL → engine → SessionLocal → get_db() →
+initialize_database(). The engine is shared and connects lazily. get_db yields
+and closes a session; CLI uses SessionLocal directly; future FastAPI routes
+can use Depends(get_db). Services accept sessions and own write transactions.
+Configuration is read once when the process starts; restart after changing it.
+
+CLI commands import database setup only when needed so help works without database
+configuration. Expected terminal errors are handled once in main(), with no custom
+session wrapper or custom exception hierarchy. Models, transaction boundaries,
+and the repeat-safe PostgreSQL company seed remain explicit.
+
+Explicit seeding currently lives in db.py beside initialization. A separate seed
+module is unnecessary at this size. Seeding still runs only through app seed.

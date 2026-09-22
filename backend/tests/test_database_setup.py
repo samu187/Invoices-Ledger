@@ -1,6 +1,9 @@
 """Offline checks: these tests never connect to PostgreSQL."""
 
 import os
+import subprocess
+import sys
+from contextlib import contextmanager
 import unittest
 from unittest.mock import patch
 
@@ -10,7 +13,7 @@ from sqlalchemy.orm import configure_mappers
 from typer.testing import CliRunner
 
 from app.cli import app
-from app.db import DatabaseConfigurationError, database_url
+from app.db import get_db
 from app.models import Base
 
 
@@ -27,33 +30,37 @@ class DatabaseSetupTests(unittest.TestCase):
         self.assertIn("WHERE kind = 'invoice'", ddl)
         self.assertNotIn("DROP TABLE", ddl)
 
-    @patch("app.db.load_dotenv")
-    def test_hosted_url_normalized_without_losing_options(self, _):
-        with patch.dict(os.environ, {"DATABASE_URL": "postgresql://demo:secret@db:5432/ledger?sslmode=require"}):
-            url = database_url()
-        self.assertEqual(url.drivername, "postgresql+psycopg")
-        self.assertEqual(url.query["sslmode"], "require")
+    def test_hosted_url_normalized_without_losing_options(self):
+        result = subprocess.run(
+            [sys.executable, "-c", "from app.db import engine; assert engine.url.drivername == 'postgresql+psycopg'; assert engine.url.query['sslmode'] == 'require'"],
+            env={**os.environ, "DATABASE_URL": "postgresql://demo:secret@db:5432/ledger?sslmode=require"},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
-    @patch("app.db.load_dotenv")
-    def test_invalid_configuration_rejected(self, _):
-        for value in ("", "sqlite:///demo.db", "not-a-url", "postgresql://"):
-            with self.subTest(value=value), patch.dict(os.environ, {"DATABASE_URL": value}):
-                with self.assertRaises(DatabaseConfigurationError):
-                    database_url()
+    def test_invalid_configuration_rejected_but_help_works(self):
+        for value in ("", "sqlite:///secret-value", "not-a-url", "postgresql://"):
+            env = {**os.environ, "DATABASE_URL": value}
+            help_result = subprocess.run([sys.executable, "-m", "app.cli", "--help"], env=env, capture_output=True, text=True)
+            self.assertEqual(help_result.returncode, 0, help_result.stderr)
+            result = subprocess.run([sys.executable, "-m", "app.cli", "init-db"], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("PostgreSQL", result.stderr)
+            self.assertNotIn("secret-value", result.stderr)
 
-    @patch("app.cli.get_engine")
-    def test_help_needs_no_database(self, engine):
+    @patch("app.db.SessionLocal")
+    def test_help_needs_no_database(self, factory):
         result = CliRunner().invoke(app, ["--help"])
         self.assertEqual(result.exit_code, 0)
-        engine.assert_not_called()
+        factory.assert_not_called()
 
-    @patch("app.db.load_dotenv")
-    def test_bad_configuration_cli_exits_cleanly(self, _):
-        with patch.dict(os.environ, {"DATABASE_URL": "sqlite:///secret-value"}):
-            result = CliRunner().invoke(app, ["init-db"])
-        self.assertEqual(result.exit_code, 1)
-        self.assertNotIn("secret-value", result.output)
-        self.assertIn("PostgreSQL", result.output)
+    @patch("app.db.SessionLocal")
+    def test_session_closed_on_error(self, factory):
+        with self.assertRaises(RuntimeError):
+            with contextmanager(get_db)() as db:
+                self.assertIs(db, factory.return_value.__enter__.return_value)
+                raise RuntimeError("failed operation")
+        factory.return_value.__exit__.assert_called_once()
 
 
 if __name__ == "__main__":

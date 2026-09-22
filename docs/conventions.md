@@ -1,7 +1,7 @@
 # Demo accounting and implementation conventions
 
 This document describes intended behaviour. SQLAlchemy models and explicit table initialization are implemented.
-Supplier services and company-only seeding are implemented. Accounting services,
+Supplier services and reference/opening-balance seeding are implemented. Accounting services,
 remaining seeds, reports, API, and frontend are not implemented yet.
 
 ## Company, currencies, and rates
@@ -162,6 +162,9 @@ Develop CLI entries/reports first. Add web API/frontend only after CLI review.
 Deploy to a new Railway database later. Authentication and learning migrations
 are optional final stages; no users/sessions are needed now.
 
-The first seed phase inserts company id 1 with ON CONFLICT DO NOTHING. Its primary
-key makes this phase safe to repeat without a seed_runs marker. Later multi-record
-accounting/demo seeds will use transactional completion markers.
+The reference_data_v1 seed creates/reuses company id 1, twelve accounts, and three
+sample suppliers. It posts GBP 50,000 debit HSBC / credit opening equity dated
+1 January 2026. A seed_runs marker is reserved with ON CONFLICT DO NOTHING in the
+same transaction; any failure rolls back both marker and data. Repeating the seed
+does not add funding again or overwrite records. No invoice/payment or FX-rate
+seeding is implemented yet.

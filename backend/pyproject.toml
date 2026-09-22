@@ -13,7 +13,6 @@ dependencies = [
 ]
 
 [project.scripts]
-app = "app.cli:main"
 invoice-ledger = "app.cli:main"
 
 [build-system]
