@@ -1,7 +1,8 @@
 # Demo accounting and implementation conventions
 
-This document describes intended behaviour. The initial scaffold does not yet
-implement a database, accounting services, reports, API, or frontend.
+This document describes intended behaviour. SQLAlchemy models and explicit table initialization are implemented.
+Supplier services and company-only seeding are implemented. Accounting services,
+remaining seeds, reports, API, and frontend are not implemented yet.
 
 ## Company, currencies, and rates
 
@@ -43,6 +44,7 @@ previous-day rate is always appropriate. See [IAS 21, paragraphs 21–22](https:
 | journal_entries | Dated posting event and source invoice/payment |
 | journal_lines | Account, GBP debit/credit, and invoice traceability |
 | fx_rates | Cached reference rates and provenance |
+| seed_runs | Completion markers for future transactional seeds |
 
 Payments must be stored, not inferred from a current balance. Each payment belongs
 to one invoice initially. There is no separate outstanding-balance or status table.
@@ -143,9 +145,23 @@ tables and `app seed` populates initial data. Normal business commands and web
 startup check readiness and give an actionable error if setup is missing, without
 creating tables or seeding automatically. Command help requires no connection.
 On Railway, setup can be a separate deployment step before `app web` starts.
-The empty `models.py` module reserves the conventional location for SQLAlchemy
-model classes; database connection/session code will be a separate module.
+`backend/app/models.py` contains the SQLAlchemy classes; `backend/app/db.py` handles connection/session
+creation and explicit initialization. Payment currency is obtained from its linked
+invoice. Journal lines inherit invoice traceability through their entry. A composite
+foreign key ensures payment journal entries reference the same invoice as their
+payment; a partial unique index prevents duplicate invoice recognition journals.
+
+Database constraints validate individual amounts, currencies, source links, and
+posting sides. Cross-row rules (balanced journals, no overpayments, correct account
+types, posting-date order, and immutable posted events) still require the future
+accounting services; models alone do not implement these rules. The single company
+has id 1 and a GBP base currency. Seed completion markers are reserved for later;
+initialization inserts no rows.
 
 Develop CLI entries/reports first. Add web API/frontend only after CLI review.
 Deploy to a new Railway database later. Authentication and learning migrations
 are optional final stages; no users/sessions are needed now.
+
+The first seed phase inserts company id 1 with ON CONFLICT DO NOTHING. Its primary
+key makes this phase safe to repeat without a seed_runs marker. Later multi-record
+accounting/demo seeds will use transactional completion markers.

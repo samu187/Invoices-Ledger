@@ -1,1 +1,0 @@
-"""Invoice Ledger application package."""

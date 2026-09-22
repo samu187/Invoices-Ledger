@@ -16,3 +16,9 @@ wheels/
 .env
 .env.*
 !.env.example
+
+# Frontend / tooling
+node_modules/
+.pytest_cache/
+.ruff_cache/
+backend/app/static/
