@@ -1,0 +1,11 @@
+.git
+.DS_Store
+**/.DS_Store
+**/.env
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+backend/app/static
