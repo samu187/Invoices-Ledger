@@ -321,3 +321,45 @@ Small P&L report (inclusive posting dates, GBP; income positive, expenses negati
 ```sh
 invoice-ledger accounts pnl --from 2026-09-01 --to 2026-09-30
 ```
+
+### Initial web API
+
+Start `invoice-ledger web`, then open http://127.0.0.1:8888/docs for the interactive
+API documentation. Web startup creates missing tables and runs the repeat-safe
+reference seed; it never resets existing records.
+
+| Method | Route | Operation |
+| --- | --- | --- |
+| POST | /api/suppliers | Create supplier |
+| GET | /api/suppliers | List suppliers |
+| POST | /api/invoices | Create invoice and journal |
+| GET | /api/invoices | List invoices (optional company_id, default 1) |
+| GET | /api/invoices/{id} | Invoice detail and journals |
+| GET | /api/invoices/{id}/payments | Invoice payment statement |
+| POST | /api/payments | Record payment and journal |
+
+Creation returns HTTP 201. Money/rates are decimal strings in JSON; dates use
+YYYY-MM-DD. Invalid input returns 422, service-rule failures 400, missing invoice
+resources 404, database constraint conflicts 409, and other database errors 500
+without database details. API calls use the same services as the CLI. For payment
+retries, supply the same request_id UUID to avoid recording another payment.
+No authentication or frontend has been added; schema creation/reset commands
+are not exposed as HTTP endpoints.
+
+Additional read-only API reports (also available in `/docs`):
+
+| Route (GET) | Report |
+| --- | --- |
+| /api/invoices/outstanding | Open invoices, currency totals and GBP payables reconciliation |
+| /api/payments | All payments |
+| /api/payments/{id} | Payment detail and journal |
+| /api/journals | Journal headers only |
+| /api/journals/{id} | Full journal lines and debit/credit totals |
+| /api/accounts | Account list and current balances |
+| /api/accounts/{code} | Account transactions and running balance |
+| /api/accounts/trial-balance | Debit/credit balances and balancing check |
+| /api/accounts/pnl?from=2026-09-01&to=2026-09-30 | P&L for inclusive posting dates |
+
+Invoice balances are included in invoice list/detail. The existing
+`/api/invoices/{id}/payments` provides original-currency and GBP payable running
+balances. Reports currently cover company 1, all time except the dated P&L.

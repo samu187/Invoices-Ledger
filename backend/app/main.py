@@ -5,7 +5,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.api.routes import router
 
@@ -26,6 +28,23 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Invoice Ledger", lifespan=lifespan)
+
+
+@app.exception_handler(ValueError)
+async def business_error(request, exc):
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error(request, exc):
+    return JSONResponse(status_code=409, content={"detail": "Record conflicts with existing data or database constraints."})
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_error(request, exc):
+    return JSONResponse(status_code=500, content={"detail": "Database operation failed."})
+
+
 app.include_router(router, prefix="/api")
 if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
