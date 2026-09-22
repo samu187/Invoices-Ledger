@@ -14,10 +14,11 @@ type Journal = {
   total_credit: string;
 };
 
-export default function JournalEntry({ id, accountCode, onSelectAccount }: {
+export default function JournalEntry({ id, accountCode, onSelectAccount, onOpenInvoice }: {
   id: number;
   accountCode: string;
   onSelectAccount: (code: string) => void;
+  onOpenInvoice: (id: number) => void;
 }) {
   // 2. State
   const [journal, setJournal] = useState<Journal | null>(null);
@@ -59,7 +60,9 @@ export default function JournalEntry({ id, accountCode, onSelectAccount }: {
       <Text>{journal.description}</Text>
       {(journal.invoice_id !== null || journal.payment_id !== null) && (
         <Text size="sm" c="dimmed">
-          {[journal.invoice_id !== null && `Invoice #${journal.invoice_id}`, journal.payment_id !== null && `Payment #${journal.payment_id}`].filter(Boolean).join(' · ')}
+          {journal.invoice_id !== null && <Anchor component="button" size="sm" onClick={() => onOpenInvoice(journal.invoice_id!)}>Invoice #{journal.invoice_id}</Anchor>}
+          {journal.invoice_id !== null && journal.payment_id !== null && ' · '}
+          {journal.payment_id !== null && `Payment #${journal.payment_id}`}
         </Text>
       )}
       <ScrollArea.Autosize mah={360}>

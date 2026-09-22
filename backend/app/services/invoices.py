@@ -120,7 +120,7 @@ def invoice_summary(db: Session, invoice: Invoice) -> dict:
         elif line["code"] == "2000":
             base_total += line["credit"] - line["debit"]
     return {
-        "id": invoice.id, "number": invoice.invoice_number, "date": invoice.invoice_date,
+        "id": invoice.id, "supplier_id": invoice.supplier_id, "number": invoice.invoice_number, "date": invoice.invoice_date,
         "supplier": supplier.name, "company_id": company.id, "currency": invoice.currency,
         "total": invoice.total_amount, "paid": paid, "balance": invoice.total_amount - paid,
         "vat_rate": invoice.vat_rate, "exchange_rate": invoice.exchange_rate,

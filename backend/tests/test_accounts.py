@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 
 from app.cli import app, format_balance
 from app.models import Account
-from app.services.accounts import get_account_activity, list_accounts
+from app.services.accounts import get_account_activity, get_input_vat_month, list_accounts
 
 
 class AccountTests(unittest.TestCase):
@@ -57,6 +57,32 @@ class AccountTests(unittest.TestCase):
         result = get_account_activity(db, "1000")
         self.assertEqual(result["balance"], Decimal("0.00"))
         self.assertEqual(result["transactions"], [])
+
+    def test_input_vat_month_has_opening_balance_and_month_ledger(self):
+        db = MagicMock()
+        db.scalar.side_effect = [
+            Account(id=2, code="1100", name="Input VAT", account_type="asset"),
+            Decimal("12.00"),
+        ]
+        db.execute.return_value.mappings.return_value = [
+            {"entry_id": 3, "posting_date": date(2026, 2, 15), "description": "Invoice #4",
+             "invoice_id": 4, "payment_id": None, "debit": Decimal("20.00"), "credit": Decimal("0.00")},
+        ]
+        report = get_input_vat_month(db, date(2026, 2, 1))
+        self.assertEqual(report["month"], "2026-02")
+        self.assertEqual(report["end_date"], date(2026, 2, 28))
+        self.assertEqual(report["opening_balance"], Decimal("12.00"))
+        self.assertEqual(report["net_movement"], Decimal("20.00"))
+        self.assertEqual(report["closing_balance"], Decimal("32.00"))
+        self.assertEqual(report["transactions"][0]["balance"], Decimal("32.00"))
+        sql = str(db.execute.call_args.args[0].compile(dialect=postgresql.dialect()))
+        self.assertIn("journal_entries.posting_date >=", sql)
+        self.assertIn("journal_entries.posting_date <", sql)
+        db.commit.assert_not_called()
+
+    def test_input_vat_month_requires_calendar_month_start(self):
+        with self.assertRaisesRegex(ValueError, "first day"):
+            get_input_vat_month(MagicMock(), date(2026, 2, 2))
 
     def test_debit_credit_labels(self):
         self.assertEqual(format_balance(Decimal("10000")), "10,000.00 Dr")

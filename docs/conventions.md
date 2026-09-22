@@ -106,6 +106,11 @@ Assume the net invoice amount is an expense and calculated VAT is fully recovera
 input VAT, translated at the invoice rate. This deliberately omits jurisdictional
 VAT rules, reverse charge, VAT returns, and HMRC integration.
 
+`GET /api/accounts/input-vat?month=YYYY-MM` is a read-only calendar-month ledger
+for Input VAT account 1100. It returns the opening GBP balance, each in-month
+journal line with its running balance, debit/credit movement, and closing GBP
+balance. It is a management report, not a VAT return.
+
 For a USD 100 invoice with no VAT at 0.85 GBP/USD, store original total 100 USD,
 rate 0.85, and VAT rate 0 on the invoice. Post GBP debit expense 85, credit
 payables 85 in its linked journal.

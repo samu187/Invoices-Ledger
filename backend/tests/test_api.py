@@ -22,7 +22,7 @@ class ApiTests(unittest.TestCase):
         self.addCleanup(self.client.close)
 
     def invoice(self):
-        return dict(id=1, number="INV1", date=date(2026, 1, 2), supplier="Demo", company_id=1,
+        return dict(id=1, supplier_id=1, number="INV1", date=date(2026, 1, 2), supplier="Demo", company_id=1,
                     currency="USD", total=D("120.00"), paid=D("0"), balance=D("120.00"),
                     vat_rate=D("20"), exchange_rate=D("0.85"), rate_date=date(2026, 1, 2),
                     base_currency="GBP", base_net=D("85"), base_vat=D("17"), base_total=D("102"),
@@ -97,7 +97,7 @@ class ApiTests(unittest.TestCase):
 
     def test_openapi_lists_report_operations(self):
         paths = self.client.get("/openapi.json").json()["paths"]
-        self.assertEqual(sum(len(methods) for methods in paths.values()), 16)
+        self.assertEqual(sum(len(methods) for methods in paths.values()), 17)
 
     def test_static_report_paths_and_empty_results(self):
         cases = [
@@ -153,3 +153,15 @@ class ApiTests(unittest.TestCase):
             get.assert_called_once_with(self.db, date(2026, 1, 1), date(2026, 1, 31))
         self.assertEqual(self.client.get("/api/accounts/pnl?from=bad&to=2026-01-31").status_code, 422)
         self.assertEqual(self.client.get("/api/accounts/pnl?from=2026-02-01&to=2026-01-31").status_code, 400)
+
+    def test_input_vat_month_uses_static_path_and_serializes_balances(self):
+        report = dict(month="2026-01", start_date=date(2026, 1, 1), end_date=date(2026, 1, 31),
+                      code="1100", name="Input VAT", account_type="asset", opening_balance=D("5"),
+                      debits=D("20"), credits=D("0"), net_movement=D("20"), closing_balance=D("25"),
+                      transactions=[])
+        with patch("app.api.routes.accounts.get_input_vat_month", return_value=report) as get:
+            response = self.client.get("/api/accounts/input-vat?month=2026-01")
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["closing_balance"], "25")
+            get.assert_called_once_with(self.db, date(2026, 1, 1))
+        self.assertEqual(self.client.get("/api/accounts/input-vat?month=2026-13").status_code, 422)

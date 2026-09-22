@@ -1,7 +1,7 @@
 """Read-only account reports. All amounts are GBP; balance = debits - credits."""
 
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -45,6 +45,53 @@ def get_account_activity(db: Session, code: str) -> dict:
         transactions.append({**row, "balance": balance})
     return {"code": account.code, "name": account.name, "account_type": account.account_type,
             "balance": balance, "transactions": transactions}
+
+
+def get_input_vat_month(db: Session, month_start: date) -> dict:
+    """Return the Input VAT account ledger for the calendar month containing month_start."""
+    if month_start.day != 1:
+        raise ValueError("Month must be the first day of a calendar month.")
+    if month_start.month == 12:
+        month_end = date(month_start.year + 1, 1, 1)
+    else:
+        month_end = date(month_start.year, month_start.month + 1, 1)
+
+    account = db.scalar(select(Account).where(Account.company_id == 1, Account.code == "1100"))
+    if account is None:
+        raise ValueError("Input VAT account 1100 is missing.")
+
+    opening_balance = db.scalar(
+        select(func.coalesce(func.sum(JournalLine.debit - JournalLine.credit), 0))
+        .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
+        .where(JournalLine.account_id == account.id, JournalEntry.posting_date < month_start)
+    )
+    statement = (
+        select(
+            JournalEntry.id.label("entry_id"), JournalEntry.posting_date,
+            JournalEntry.description, JournalEntry.invoice_id, JournalEntry.payment_id,
+            JournalLine.debit, JournalLine.credit,
+        )
+        .join(JournalLine, JournalLine.entry_id == JournalEntry.id)
+        .where(JournalLine.account_id == account.id, JournalEntry.posting_date >= month_start,
+               JournalEntry.posting_date < month_end)
+        .order_by(JournalEntry.posting_date, JournalEntry.id, JournalLine.id)
+    )
+    balance = opening_balance
+    debits = credits = Decimal("0.00")
+    transactions = []
+    for row in db.execute(statement).mappings():
+        debits += row["debit"]
+        credits += row["credit"]
+        balance += row["debit"] - row["credit"]
+        transactions.append({**row, "balance": balance})
+    return {
+        "month": month_start.strftime("%Y-%m"), "start_date": month_start,
+        "end_date": month_end - timedelta(days=1),
+        "code": account.code, "name": account.name, "account_type": account.account_type,
+        "opening_balance": opening_balance, "debits": debits, "credits": credits,
+        "net_movement": debits - credits, "closing_balance": balance,
+        "transactions": transactions,
+    }
 
 
 def get_trial_balance(db: Session) -> dict:

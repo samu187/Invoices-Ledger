@@ -42,3 +42,30 @@ body {
 .mantine-Table-tfoot .mantine-Table-th { color: #253247; font-size: 13px; }
 .mantine-Table-td { border-color: #edf0f4; }
 .mantine-Anchor-root { color: #4959b0; }
+
+/* The assistant stays in the sidebar; its chat floats above the workspace. */
+.bookkeeper-launcher { padding: 12px 0; border-radius: 10px; }
+.bookkeeper-launcher:hover { background: #e3e8fa; }
+.bookkeeper-bot { flex-shrink: 0; }
+.bookkeeper-eyes { transform-origin: 32px 27px; animation: bot-blink 6s infinite; }
+@keyframes bot-blink {
+  0%, 44%, 48%, 100% { transform: scaleY(1); }
+  46% { transform: scaleY(0.15); }
+}
+.bookkeeper-chat {
+  position: fixed;
+  left: calc(50% + 130px);
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 308px));
+  max-height: calc(100dvh - 96px);
+  overflow-y: auto;
+  z-index: 210;
+  background: white;
+}
+@media (max-width: 47.99em) {
+  .bookkeeper-chat { left: 50%; bottom: 12px; width: calc(100vw - 24px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bookkeeper-eyes { animation: none; }
+}

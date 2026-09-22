@@ -18,10 +18,10 @@ type AccountDetail = Account & {
   }[];
 };
 
-export default function Accounts() {
+export default function Accounts({ initialAccountCode = null, initialJournalId, onOpenInvoice }: { initialAccountCode?: string | null; initialJournalId: number | null; onOpenInvoice: (id: number) => void }) {
   // 2. State
-  const [selectedCode, setSelectedCode] = useState('2000');
-  const [journalId, setJournalId] = useState<number | null>(null);
+  const [selectedCode, setSelectedCode] = useState(initialAccountCode);
+  const [journalId, setJournalId] = useState<number | null>(initialJournalId);
   const [trialBalance, setTrialBalance] = useState<TrialBalance | null>(null);
   const [account, setAccount] = useState<AccountDetail | null>(null);
   const [trialError, setTrialError] = useState('');
@@ -61,6 +61,7 @@ export default function Accounts() {
     let active = true;
     setAccount(null);
     setAccountError('');
+    if (selectedCode === null) return;
     async function loadAccount() {
       try {
         const response = await fetch(`/api/accounts/${selectedCode}`);
@@ -76,6 +77,10 @@ export default function Accounts() {
   }, [selectedCode]);
 
   // 4. Helpers: selection and display only, no financial calculations
+  function openJournal(id: number) {
+    setJournalId(id);
+  }
+
   function selectAccount(code: string) {
     setSelectedCode(code);
     setJournalId(null);
@@ -99,52 +104,61 @@ export default function Accounts() {
         <Text size="sm" c="dimmed">All time · All amounts in GBP</Text>
       </Group>
 
-      <Group justify="space-between">
-        <Title order={2} size="md" c="dimmed">— Balances —</Title>
-        {trialBalance && !trialBalance.balanced && <Text size="sm" c="red">Debits and credits do not balance</Text>}
-      </Group>
-      {trialError ? <Alert color="red" title="Trial balance unavailable">{trialError} Refresh the page to retry.</Alert> : !trialBalance ? <Text role="status">Loading trial balance…</Text> : (
-        <>
-          <ScrollArea.Autosize mah={400}>
-            <Table verticalSpacing={3} highlightOnHover stickyHeader miw={560} style={{ fontVariantNumeric: 'tabular-nums' }}>
-              <Table.Thead><Table.Tr><Table.Th>Code</Table.Th><Table.Th>Account</Table.Th><Table.Th ta="right">Debit</Table.Th><Table.Th ta="right">Credit</Table.Th></Table.Tr></Table.Thead>
-              <Table.Tbody>
-                {trialBalance.rows.map((row) => (
-                  <Table.Tr key={row.code} bg={selectedCode === row.code ? '#edf1f6' : undefined} onClick={() => selectAccount(row.code)} style={{ cursor: 'pointer' }}>
-                    <Table.Td><Anchor component="button" size="sm" aria-label={`Select account ${row.code}`} aria-pressed={selectedCode === row.code} onClick={() => selectAccount(row.code)}>{row.code}</Anchor></Table.Td>
-                    <Table.Td>{row.name}</Table.Td>
-                    <Table.Td ta="right">{money(row.debit)}</Table.Td><Table.Td ta="right">{money(row.credit)}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-              <Table.Tfoot><Table.Tr><Table.Th colSpan={2}>Total</Table.Th><Table.Th ta="right">{money(trialBalance.total_debit)}</Table.Th><Table.Th ta="right">{money(trialBalance.total_credit)}</Table.Th></Table.Tr></Table.Tfoot>
-            </Table>
-          </ScrollArea.Autosize>
-          {trialBalance.rows.length === 0 && <Text c="dimmed">No accounts found.</Text>}
-        </>
-      )}
+      {/* A stable top panel keeps the ledger below in place when switching views. */}
+      <Stack h={450} gap="md">
+        {journalId !== null ? (
+          <>
+            <Group justify="space-between">
+              <Breadcrumbs separator="/">
+                <Tooltip label="Back to account balances · Esc" withArrow>
+                  <Anchor component="button" size="sm" underline="hover" aria-label="Back to account balances" aria-keyshortcuts="Escape" onClick={() => setJournalId(null)}>
+                    ‹ Balances
+                  </Anchor>
+                </Tooltip>
+                <Text size="sm" fw={600}>Journal #{journalId}</Text>
+              </Breadcrumbs>
+              <Tooltip label="Back to account balances"><Kbd size="xs">Esc</Kbd></Tooltip>
+            </Group>
+            <ScrollArea style={{ flex: 1, minHeight: 0 }}>
+              <JournalEntry key={journalId} id={journalId} accountCode={selectedCode ?? ''} onSelectAccount={selectAccount} onOpenInvoice={onOpenInvoice} />
+            </ScrollArea>
+          </>
+        ) : (
+          <>
+            <Group justify="space-between">
+              <Title order={2} size="md" c="dimmed">— Balances —</Title>
+              {trialBalance && !trialBalance.balanced && <Text size="sm" c="red">Debits and credits do not balance</Text>}
+            </Group>
+            {trialError ? <Alert color="red" title="Trial balance unavailable">{trialError} Refresh the page to retry.</Alert> : !trialBalance ? <Text role="status">Loading trial balance…</Text> : (
+              <>
+                <ScrollArea.Autosize mah={400}>
+                  <Table verticalSpacing={3} highlightOnHover stickyHeader miw={560} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <Table.Thead><Table.Tr><Table.Th>Code</Table.Th><Table.Th>Account</Table.Th><Table.Th ta="right">Debit</Table.Th><Table.Th ta="right">Credit</Table.Th></Table.Tr></Table.Thead>
+                    <Table.Tbody>
+                      {trialBalance.rows.map((row) => (
+                        <Table.Tr key={row.code} bg={selectedCode === row.code ? '#edf1f6' : undefined} onClick={() => selectAccount(row.code)} style={{ cursor: 'pointer' }}>
+                          <Table.Td><Anchor component="button" size="sm" aria-label={`Select account ${row.code}`} aria-pressed={selectedCode === row.code} onClick={() => selectAccount(row.code)}>{row.code}</Anchor></Table.Td>
+                          <Table.Td>{row.name}</Table.Td>
+                          <Table.Td ta="right">{money(row.debit)}</Table.Td><Table.Td ta="right">{money(row.credit)}</Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                    <Table.Tfoot><Table.Tr><Table.Th colSpan={2}>Total</Table.Th><Table.Th ta="right">{money(trialBalance.total_debit)}</Table.Th><Table.Th ta="right">{money(trialBalance.total_credit)}</Table.Th></Table.Tr></Table.Tfoot>
+                  </Table>
+                </ScrollArea.Autosize>
+                {trialBalance.rows.length === 0 && <Text c="dimmed">No accounts found.</Text>}
+              </>
+            )}
+
+          </>
+        )}
+      </Stack>
 
       <Divider my="md" color="indigo.1" />
 
-      <Group justify="space-between">
-        {journalId !== null ? (
-          <>
-            <Breadcrumbs separator="/">
-              <Tooltip label={`Back to ${selectedCode}${account ? ` — ${account.name}` : ''} · Esc`} withArrow>
-                <Anchor component="button" size="sm" underline="hover" aria-label="Back to account ledger" aria-keyshortcuts="Escape" onClick={() => setJournalId(null)}>
-                  ‹ Account ledger
-                </Anchor>
-              </Tooltip>
-              <Text size="sm" fw={600}>Journal #{journalId}</Text>
-            </Breadcrumbs>
-            <Tooltip label="Back to account ledger">
-              <Kbd size="xs">Esc</Kbd>
-            </Tooltip>
-          </>
-        ) : <Title order={2} size="sm" c="dimmed">— Account ledger —</Title>}
-      </Group>
+      <Title order={2} size="sm" c="dimmed">— Account ledger —</Title>
 
-      {journalId !== null ? <JournalEntry key={journalId} id={journalId} accountCode={selectedCode} onSelectAccount={selectAccount} /> : accountError ? <Alert color="red" title="Account unavailable">{accountError} Refresh the page to retry.</Alert> : !account || account.code !== selectedCode ? <Text role="status">Loading account {selectedCode}…</Text> : (
+      {selectedCode === null ? <Text c="dimmed">Select an account in Balances to view its ledger.</Text> : accountError ? <Alert color="red" title="Account unavailable">{accountError} Refresh the page to retry.</Alert> : !account || account.code !== selectedCode ? <Text role="status">Loading account {selectedCode}…</Text> : (
         <Stack gap="sm">
           <Group justify="space-between">
             <div>
@@ -158,9 +172,9 @@ export default function Accounts() {
               <Table.Thead><Table.Tr><Table.Th>Date</Table.Th><Table.Th>Journal</Table.Th><Table.Th>Description</Table.Th><Table.Th>Source</Table.Th><Table.Th ta="right">Debit</Table.Th><Table.Th ta="right">Credit</Table.Th><Table.Th ta="right">Balance</Table.Th></Table.Tr></Table.Thead>
               <Table.Tbody>
                 {account.transactions.map((row, index) => (
-                  <Table.Tr key={`${row.entry_id}-${index}`} onClick={() => setJournalId(row.entry_id)} style={{ cursor: 'pointer' }}>
+                  <Table.Tr key={`${row.entry_id}-${index}`} bg={row.entry_id === journalId ? '#edf1f6' : undefined} onClick={() => openJournal(row.entry_id)} style={{ cursor: 'pointer' }}>
                     <Table.Td style={{ whiteSpace: 'nowrap' }}>{row.posting_date}</Table.Td>
-                    <Table.Td><Anchor component="button" size="sm" aria-label={`Open journal entry ${row.entry_id}`} onClick={() => setJournalId(row.entry_id)}>#{row.entry_id}</Anchor></Table.Td><Table.Td>{row.description}</Table.Td>
+                    <Table.Td><Anchor component="button" size="sm" aria-label={`Open journal entry ${row.entry_id}`} onClick={() => openJournal(row.entry_id)}>#{row.entry_id}</Anchor></Table.Td><Table.Td>{row.description}</Table.Td>
                     <Table.Td>{[row.invoice_id !== null && `Invoice #${row.invoice_id}`, row.payment_id !== null && `Payment #${row.payment_id}`].filter(Boolean).join(' · ') || '—'}</Table.Td>
                     <Table.Td ta="right">{money(row.debit)}</Table.Td><Table.Td ta="right">{money(row.credit)}</Table.Td><Table.Td ta="right" style={{ whiteSpace: 'nowrap' }}>{balance(row.balance)}</Table.Td>
                   </Table.Tr>

@@ -13,6 +13,7 @@ from app.schemas import (
     PaymentCreate, PaymentCreated, SupplierCreate, SupplierRead,
     AccountRead, AccountDetail, JournalHeader, JournalRead, OutstandingRead,
     PaymentRead, PaymentDetail, TrialBalanceRead, ProfitLossRead,
+    InputVatMonthRead,
 )
 from app.services import accounts, invoices, journals, payments, suppliers
 
@@ -101,6 +102,12 @@ def trial_balance(db: Session = Depends(get_db)):
 def profit_and_loss(start: date = Query(..., alias="from"), end: date = Query(..., alias="to"),
                     db: Session = Depends(get_db)):
     return accounts.get_profit_and_loss(db, start, end)
+
+
+@router.get("/accounts/input-vat", response_model=InputVatMonthRead)
+def input_vat_month(month: str = Query(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+                    db: Session = Depends(get_db)):
+    return accounts.get_input_vat_month(db, date.fromisoformat(f"{month}-01"))
 
 
 @router.get("/accounts/{code}", response_model=AccountDetail)

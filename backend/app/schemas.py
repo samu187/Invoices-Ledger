@@ -97,6 +97,7 @@ class JournalRead(BaseModel):
 
 class InvoiceRead(BaseModel):
     id: int
+    supplier_id: int
     number: str
     date: date
     supplier: str
@@ -198,6 +199,23 @@ class AccountTransaction(BaseModel):
 
 
 class AccountDetail(AccountRead):
+    transactions: list[AccountTransaction]
+
+
+class InputVatMonthRead(BaseModel):
+    """Input VAT account 1100 activity for one calendar month; not a VAT return."""
+
+    month: str
+    start_date: date
+    end_date: date
+    code: str
+    name: str
+    account_type: str
+    opening_balance: Decimal
+    debits: Decimal
+    credits: Decimal
+    net_movement: Decimal
+    closing_balance: Decimal
     transactions: list[AccountTransaction]
 
 
