@@ -39,7 +39,7 @@ Create the local database configuration:
 cp backend/.env.example backend/.env
 ```
 
-Choose a password in `backend/.env` and use the same value in `POSTGRES_PASSWORD` and `DATABASE_URL`. The file is ignored by Git.
+Choose a database password in `backend/.env` and use the same value in `POSTGRES_PASSWORD` and `DATABASE_URL`. Also replace `ADMIN_PASSWORD` with a long, unique password. The file is ignored by Git.
 
 Build the frontend:
 
