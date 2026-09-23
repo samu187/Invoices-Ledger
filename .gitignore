@@ -19,6 +19,7 @@ wheels/
 
 # Frontend / tooling
 node_modules/
+.vscode/
 .pytest_cache/
 .ruff_cache/
 backend/app/static/
