@@ -7,7 +7,7 @@ import Vat from './views/Vat';
 import Payments from './views/Payments';
 import Suppliers from './views/Suppliers';
 import Dashboard from './views/Dashboard';
-import AssistantPreview from './components/AssistantPreview';
+import Assistant from './components/Assistant';
 
 export default function App() {
   // 2. State
@@ -22,6 +22,7 @@ export default function App() {
   });
   const [menuOpened, setMenuOpened] = useState(false);
   const [assistantOpened, setAssistantOpened] = useState(false);
+  const [assistantRevision, setAssistantRevision] = useState(0);
 
   // 3. Helpers
   function selectView(name: string) {
@@ -70,11 +71,11 @@ export default function App() {
           ))}
         </Stack>
         <Stack gap={2} mt="auto" pt="xl">
-          <AssistantPreview opened={assistantOpened} onOpenedChange={setAssistantOpened} />
+          <Assistant opened={assistantOpened} onOpenedChange={setAssistantOpened} onRecordCreated={() => setAssistantRevision((revision) => revision + 1)} />
         </Stack>
       </AppShell.Navbar>
       <AppShell.Main>
-        <Paper withBorder p={{ base: 'md', sm: 'xl' }} radius="md">
+        <Paper key={assistantRevision} withBorder p={{ base: 'md', sm: 'xl' }} radius="md">
           {view === 'Dashboard' ? <Dashboard month={vatMonth} onNavigate={selectView} onOpenAssistant={() => setAssistantOpened(true)} /> : view === 'Accounts' ? <Accounts initialAccountCode={accountCode} initialJournalId={journalId} onOpenInvoice={openInvoice} onOpenPayment={openPayment} /> : view === 'Invoices' ? <Invoices initialInvoiceId={invoiceId} onOpenJournal={openJournal} onOpenPayment={openPayment} /> : view === 'VAT' ? <Vat month={vatMonth} onMonthChange={setVatMonth} onOpenJournal={(id) => openJournal(id, '1100')} /> : view === 'Payments' ? <Payments key={paymentId ?? 'list'} initialPaymentId={paymentId} onOpenInvoice={openInvoice} onOpenJournal={openJournal} /> : <Suppliers />}
         </Paper>
       </AppShell.Main>

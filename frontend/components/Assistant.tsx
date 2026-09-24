@@ -1,6 +1,8 @@
-// 1. Imports
-import { useEffect, useState } from 'react';
-import { ActionIcon, Box, CloseButton, Group, Paper, Portal, ScrollArea, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
+// 1. Imports and API types
+import { useEffect, useRef, useState } from 'react';
+import { ActionIcon, Alert, Box, CloseButton, Group, Paper, Portal, ScrollArea, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
+
+type Message = { role: 'user' | 'assistant'; text: string };
 
 export function BotIcon({ width = 52, height = 56 }: { width?: number; height?: number }) {
   return (
@@ -19,10 +21,13 @@ export function BotIcon({ width = 52, height = 56 }: { width?: number; height?: 
   );
 }
 
-export default function AssistantPreview({ opened, onOpenedChange }: { opened: boolean; onOpenedChange: (opened: boolean) => void }) {
+export default function Assistant({ opened, onOpenedChange, onRecordCreated }: { opened: boolean; onOpenedChange: (opened: boolean) => void; onRecordCreated: () => void }) {
   // 2. State
   const [draft, setDraft] = useState('');
-  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const viewport = useRef<HTMLDivElement>(null);
 
   // 3. Effects
   useEffect(() => {
@@ -37,15 +42,40 @@ export default function AssistantPreview({ opened, onOpenedChange }: { opened: b
     return () => window.removeEventListener('keydown', closeOnEscape, true);
   }, [opened, onOpenedChange]);
 
-  // 4. Helpers: local preview only
-  function sendMessage(event: React.FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    viewport.current?.scrollTo({ top: viewport.current.scrollHeight });
+  }, [messages, sending, opened]);
+
+  // 4. Helpers
+  async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft.trim()) return;
-    setMessages((previous) => [...previous, { role: 'user', text: draft.trim() }, {
-      role: 'assistant',
-      text: 'This is a preview reply. The assistant is not connected yet, so no records have been created. Once connected, you’ll be able to ask me to record invoices, payments and suppliers.',
-    }]);
+    const query = draft.trim();
+    if (!query || sending) return;
+    const history = messages.slice(-12).map((message) => ({ role: message.role, content: message.text }));
+    setSending(true);
+    setError('');
+    setMessages((previous) => [...previous, { role: 'user', text: query }]);
     setDraft('');
+    try {
+      const response = await fetch('/api/assistant/query', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, history }),
+      });
+      const data: unknown = await response.json();
+      if (!response.ok) {
+        const detail = typeof data === 'object' && data !== null && 'detail' in data ? data.detail : null;
+        throw new Error(typeof detail === 'string' ? detail : 'The assistant could not answer.');
+      }
+      if (typeof data !== 'string' || !data.trim()) throw new Error('The assistant returned an empty reply.');
+      setMessages((previous) => [...previous, { role: 'assistant', text: data }]);
+      if (/^Created (supplier|invoice|payment) #/.test(data)) onRecordCreated();
+    } catch (caught) {
+      setMessages((previous) => previous.slice(0, -1));
+      setDraft(query);
+      setError(caught instanceof TypeError ? 'The reply could not be confirmed. Check records before retrying; a create request may have succeeded.' : caught instanceof Error ? caught.message : 'The assistant could not answer.');
+    } finally {
+      setSending(false);
+    }
   }
 
   // 5. View
@@ -54,7 +84,7 @@ export default function AssistantPreview({ opened, onOpenedChange }: { opened: b
       <UnstyledButton className="bookkeeper-launcher" onClick={() => onOpenedChange(!opened)} aria-expanded={opened} aria-controls="bookkeeper-chat">
         <Group gap="sm" wrap="nowrap">
           <BotIcon />
-          <div><Text size="sm" fw={600}>Bookkeeping assistant</Text><Text size="xs" c="dimmed">AI Bot Coming soon!</Text></div>
+          <div><Text size="sm" fw={600}>Bookkeeping assistant</Text><Text size="xs" c="dimmed">Ask about records or create one</Text></div>
         </Group>
       </UnstyledButton>
       {opened && (
@@ -62,25 +92,27 @@ export default function AssistantPreview({ opened, onOpenedChange }: { opened: b
         <Paper id="bookkeeper-chat" className="bookkeeper-chat" component="section" aria-label="Bookkeeping assistant chat" withBorder radius="lg" shadow="lg" p="md">
           <Stack gap="sm">
             <Group justify="space-between">
-              <div><Text size="sm" fw={600}>Bookkeeping assistant</Text><Text size="xs" c="dimmed">Local preview · Not connected to AI</Text></div>
+              <div><Text size="sm" fw={600}>Bookkeeping assistant</Text><Text size="xs" c="dimmed">Records are saved when you ask me to create them</Text></div>
               <CloseButton aria-label="Close assistant" onClick={() => onOpenedChange(false)} />
             </Group>
             {messages.length === 0 ? <Text size="sm" c="dimmed">What would you like to record? Try “Add a supplier called River Studio”.</Text> : (
-              <ScrollArea.Autosize mah={230} viewportRef={(element) => { if (element) element.scrollTop = element.scrollHeight; }}>
+              <ScrollArea.Autosize mah={230} viewportRef={viewport}>
                 <Stack gap="sm" role="log" aria-live="polite" aria-label="Chat messages">
                   {messages.map((message, index) => (
                     <Box key={index} p="sm" bg={message.role === 'user' ? 'indigo.0' : 'gray.0'} style={{ borderRadius: 10, overflowWrap: 'anywhere' }}>
-                      <Text size="xs" fw={600} mb={3}>{message.role === 'user' ? 'You' : 'Assistant · Preview reply'}</Text>
+                      <Text size="xs" fw={600} mb={3}>{message.role === 'user' ? 'You' : 'Assistant'}</Text>
                       <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{message.text}</Text>
                     </Box>
                   ))}
                 </Stack>
               </ScrollArea.Autosize>
             )}
+            {sending && <Text size="sm" c="dimmed" role="status">Assistant is working…</Text>}
+            {error && <Alert color="red" title="Assistant unavailable">{error}</Alert>}
             <form onSubmit={sendMessage}>
               <Group gap="xs" wrap="nowrap">
-                <TextInput autoFocus aria-label="Message the bookkeeping assistant" placeholder="Ask your bookkeeping assistant…" value={draft} onChange={(event) => setDraft(event.currentTarget.value)} style={{ flex: 1 }} radius="md" />
-                <ActionIcon type="submit" size="lg" radius="md" disabled={!draft.trim()} aria-label="Send message">
+                <TextInput autoFocus aria-label="Message the bookkeeping assistant" placeholder="Ask your bookkeeping assistant…" value={draft} onChange={(event) => setDraft(event.currentTarget.value)} maxLength={4000} disabled={sending} style={{ flex: 1 }} radius="md" />
+                <ActionIcon type="submit" size="lg" radius="md" loading={sending} disabled={!draft.trim()} aria-label="Send message">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" /></svg>
                 </ActionIcon>
               </Group>

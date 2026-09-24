@@ -1,7 +1,7 @@
 // 1. Imports and API response types
 import { useEffect, useState } from 'react';
 import { Alert, Anchor, Button, Group, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
-import { BotIcon } from '../components/AssistantPreview';
+import { BotIcon } from '../components/Assistant';
 
 type Outstanding = { rows: unknown[]; payables: string };
 type VatMonth = { month: string; net_movement: string };
