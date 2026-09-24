@@ -64,7 +64,10 @@ The CLI uses the same database and accounting services:
 
 ```bash
 uv run ledger --help
+uv run ledger assistant "Which invoices are outstanding?"
 ```
+
+Set `OPENAI_API_KEY` in `backend/.env` for the assistant, and set it as a Railway service variable for the hosted app. `OPENAI_MODEL` optionally overrides the default `gpt-6-luna`. The assistant is available through the CLI and `POST /api/assistant/query`; its frontend chat is still a preview. It can read records and directly create suppliers, invoices, and payments when asked. Creation has no confirmation step.
 
 To stop PostgreSQL without deleting its data:
 

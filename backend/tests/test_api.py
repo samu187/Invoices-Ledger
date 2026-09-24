@@ -97,7 +97,7 @@ class ApiTests(unittest.TestCase):
 
     def test_openapi_lists_report_operations(self):
         paths = self.client.get("/openapi.json").json()["paths"]
-        self.assertEqual(sum(len(methods) for methods in paths.values()), 17)
+        self.assertEqual(sum(len(methods) for methods in paths.values()), 18)
 
     def test_static_report_paths_and_empty_results(self):
         cases = [

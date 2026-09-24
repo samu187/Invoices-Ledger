@@ -13,6 +13,7 @@ from app.services.suppliers import create_supplier, list_suppliers
 from app.services.accounts import list_accounts, get_account_activity, get_trial_balance, get_profit_and_loss
 from app.services.journals import list_journals, get_journal
 from app.services.invoices import create_invoice, list_invoices, get_invoice, get_invoice_payments, get_outstanding_invoices
+from app.assistant.agent import query_assistant
 
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)
@@ -31,6 +32,12 @@ app.add_typer(invoices, name="invoices")
 
 payments = typer.Typer(help="Record invoice payments.", no_args_is_help=True)
 app.add_typer(payments, name="payments")
+
+
+@app.command("assistant")
+def assistant_query(query: str = typer.Argument(..., help="Ask the bookkeeping assistant.")):
+    """Send a query to the shared assistant service."""
+    typer.echo(query_assistant(query))
 
 
 def print_payment(row):
@@ -398,6 +405,9 @@ def main():
             typer.echo(f"{field}: {error['msg']}", err=True)
         raise SystemExit(2) from None
     except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise SystemExit(1) from None
+    except ConnectionError as exc:
         typer.echo(str(exc), err=True)
         raise SystemExit(1) from None
     except SQLAlchemyError:

@@ -14,6 +14,20 @@ class SupplierCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
 
+class AssistantMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class AssistantQuery(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    query: str = Field(min_length=1, max_length=4000)
+    history: list[AssistantMessage] = Field(default_factory=list, max_length=12)
+
+
 class SupplierRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

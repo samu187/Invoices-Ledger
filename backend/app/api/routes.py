@@ -7,9 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.assistant.agent import query_assistant
 from app.models import Account, Invoice, JournalEntry, Payment
 from app.schemas import (
-    InvoiceCreate, InvoiceCreated, InvoiceDetail, InvoicePaymentsRead, InvoiceRead,
+    AssistantQuery, InvoiceCreate, InvoiceCreated, InvoiceDetail, InvoicePaymentsRead, InvoiceRead,
     PaymentCreate, PaymentCreated, SupplierCreate, SupplierRead,
     AccountRead, AccountDetail, JournalHeader, JournalRead, OutstandingRead,
     PaymentRead, PaymentDetail, TrialBalanceRead, ProfitLossRead,
@@ -18,6 +19,14 @@ from app.schemas import (
 from app.services import accounts, invoices, journals, payments, suppliers
 
 router = APIRouter()
+
+
+@router.post("/assistant/query")
+def assistant_query(data: AssistantQuery):
+    try:
+        return query_assistant(data.query, [message.model_dump() for message in data.history])
+    except ConnectionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
 
 
 @router.post("/suppliers", response_model=SupplierRead, status_code=201)
