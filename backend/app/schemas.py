@@ -28,6 +28,11 @@ class AssistantQuery(BaseModel):
     history: list[AssistantMessage] = Field(default_factory=list, max_length=12)
 
 
+class AssistantReply(BaseModel):
+    reply: str
+    created_count: int
+
+
 class SupplierRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

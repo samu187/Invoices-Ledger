@@ -1,6 +1,8 @@
 // 1. Imports and API types
 import { useEffect, useRef, useState } from 'react';
 import { ActionIcon, Alert, Box, CloseButton, Group, Paper, Portal, ScrollArea, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type Message = { role: 'user' | 'assistant'; text: string };
 
@@ -66,9 +68,14 @@ export default function Assistant({ opened, onOpenedChange, onRecordCreated }: {
         const detail = typeof data === 'object' && data !== null && 'detail' in data ? data.detail : null;
         throw new Error(typeof detail === 'string' ? detail : 'The assistant could not answer.');
       }
-      if (typeof data !== 'string' || !data.trim()) throw new Error('The assistant returned an empty reply.');
-      setMessages((previous) => [...previous, { role: 'assistant', text: data }]);
-      if (/^Created (supplier|invoice|payment) #/.test(data)) onRecordCreated();
+      if (typeof data !== 'object' || data === null || !('reply' in data) || typeof data.reply !== 'string' || !data.reply.trim()
+          || !('created_count' in data) || typeof data.created_count !== 'number') {
+        throw new Error('The assistant returned an invalid reply.');
+      }
+      const reply = data.reply;
+      const createdCount = data.created_count;
+      setMessages((previous) => [...previous, { role: 'assistant', text: reply }]);
+      if (createdCount > 0) onRecordCreated();
     } catch (caught) {
       setMessages((previous) => previous.slice(0, -1));
       setDraft(query);
@@ -84,7 +91,7 @@ export default function Assistant({ opened, onOpenedChange, onRecordCreated }: {
       <UnstyledButton className="bookkeeper-launcher" onClick={() => onOpenedChange(!opened)} aria-expanded={opened} aria-controls="bookkeeper-chat">
         <Group gap="sm" wrap="nowrap">
           <BotIcon />
-          <div><Text size="sm" fw={600}>Bookkeeping assistant</Text><Text size="xs" c="dimmed">Ask about records or create one</Text></div>
+          <div><Text size="sm" fw={600}>Bookkeeping assistant</Text><Text size="xs" c="dimmed">Ask about records or create them</Text></div>
         </Group>
       </UnstyledButton>
       {opened && (
@@ -101,7 +108,9 @@ export default function Assistant({ opened, onOpenedChange, onRecordCreated }: {
                   {messages.map((message, index) => (
                     <Box key={index} p="sm" bg={message.role === 'user' ? 'indigo.0' : 'gray.0'} style={{ borderRadius: 10, overflowWrap: 'anywhere' }}>
                       <Text size="xs" fw={600} mb={3}>{message.role === 'user' ? 'You' : 'Assistant'}</Text>
-                      <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{message.text}</Text>
+                      {message.role === 'assistant' ? (
+                        <div className="assistant-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{message.text}</ReactMarkdown></div>
+                      ) : <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{message.text}</Text>}
                     </Box>
                   ))}
                 </Stack>

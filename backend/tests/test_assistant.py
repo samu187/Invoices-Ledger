@@ -7,8 +7,15 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from fastapi.testclient import TestClient
+from openai import OpenAIError
+from typer.testing import CliRunner
+
 from app.assistant.agent import query_assistant
 from app.assistant.tools import TOOLS, reference_context, run_tool
+from app.cli import app as cli
+from app.main import app
+from app.schemas import AssistantReply
 
 
 class AssistantTests(unittest.TestCase):
@@ -91,19 +98,90 @@ class AssistantTests(unittest.TestCase):
              patch("app.assistant.agent.OpenAI") as client:
             client.return_value.responses.create.side_effect = [first, second]
             answer = query_assistant("FX on payment 4?", [{"role": "user", "content": "Earlier question"}])
-            self.assertIn("GBP 2 FX loss", answer)
+            self.assertIn("GBP 2 FX loss", answer.reply)
+            self.assertEqual(answer.created_count, 0)
             tool.assert_called_once_with("payments_show", {"payment_id": 4})
             follow_up = client.return_value.responses.create.call_args_list[1].kwargs["input"]
             self.assertEqual(follow_up[-1]["type"], "function_call_output")
             self.assertEqual(follow_up[-1]["call_id"], "call-1")
 
-    def test_committed_write_returns_receipt_without_another_model_call(self):
-        call = SimpleNamespace(type="function_call", name="create_invoice",
-                               arguments='{"supplier_id":2}', call_id="call-2")
+    def test_multiple_creates_are_reported_after_final_model_answer(self):
+        calls = [SimpleNamespace(type="function_call", name="create_invoice",
+                                 arguments=json.dumps({"invoice_number": f"A-{number}"}), call_id=f"call-{number}")
+                 for number in (1, 2, 3)]
+        responses = [SimpleNamespace(output=[call], output_text="") for call in calls]
+        responses.append(SimpleNamespace(output=[], output_text="I recorded all three invoices."))
+        outputs = [json.dumps({"invoice_id": number, "journal_id": number + 10}) for number in (1, 2, 3)]
+        with patch("app.assistant.agent.reference_context", return_value="Current lists"), \
+             patch("app.assistant.agent.run_tool", side_effect=outputs) as tool, \
+             patch("app.assistant.agent.OpenAI") as client:
+            client.return_value.responses.create.side_effect = responses
+            answer = query_assistant("Create three invoices")
+            self.assertEqual(answer.created_count, 3)
+            self.assertIn("Invoice #1, journal #11", answer.reply)
+            self.assertIn("Invoice #3, journal #13", answer.reply)
+            self.assertIn("I recorded all three invoices.", answer.reply)
+            self.assertEqual(tool.call_count, 3)
+            self.assertEqual(client.return_value.responses.create.call_count, 4)
+
+    def test_model_failure_after_create_still_reports_saved_record(self):
+        call = SimpleNamespace(type="function_call", name="create_supplier",
+                               arguments='{"name":"Demo"}', call_id="call-1")
         response = SimpleNamespace(output=[call], output_text="")
         with patch("app.assistant.agent.reference_context", return_value="Current lists"), \
-             patch("app.assistant.agent.run_tool", return_value='{"invoice_id":5,"journal_id":9}'), \
+             patch("app.assistant.agent.run_tool", return_value='{"id":7,"name":"Demo"}'), \
              patch("app.assistant.agent.OpenAI") as client:
-            client.return_value.responses.create.return_value = response
-            self.assertEqual(query_assistant("Create invoice"), "Created invoice #5 and journal #9.")
-            client.return_value.responses.create.assert_called_once()
+            client.return_value.responses.create.side_effect = [response, OpenAIError("connection lost")]
+            answer = query_assistant("Create supplier Demo")
+            self.assertEqual(answer.created_count, 1)
+            self.assertIn("Supplier #7: Demo", answer.reply)
+            self.assertIn("could not finish", answer.reply)
+
+    def test_partial_failure_and_duplicate_create(self):
+        first = SimpleNamespace(type="function_call", name="create_invoice",
+                                arguments='{"invoice_number":"A-1"}', call_id="call-1")
+        duplicate = SimpleNamespace(type="function_call", name="create_invoice",
+                                    arguments='{"invoice_number":"A-1"}', call_id="call-2")
+        failed = SimpleNamespace(type="function_call", name="create_invoice",
+                                 arguments='{"invoice_number":"A-2"}', call_id="call-3")
+        responses = [SimpleNamespace(output=[call], output_text="") for call in (first, duplicate, failed)]
+        responses.append(SimpleNamespace(output=[], output_text="The second invoice could not be saved."))
+        with patch("app.assistant.agent.reference_context", return_value="Current lists"), \
+             patch("app.assistant.agent.run_tool", side_effect=['{"invoice_id":1,"journal_id":11}', ValueError("Duplicate invoice")]) as tool, \
+             patch("app.assistant.agent.OpenAI") as client:
+            client.return_value.responses.create.side_effect = responses
+            answer = query_assistant("Create two invoices")
+            self.assertEqual(answer.created_count, 1)
+            self.assertIn("Invoice #1, journal #11", answer.reply)
+            self.assertIn("Failed attempts (1)", answer.reply)
+            self.assertIn("Invoice A-2: Duplicate invoice", answer.reply)
+            self.assertIn("Duplicate invoice", answer.reply)
+            self.assertEqual(tool.call_count, 2)
+
+    def test_create_limit_prevents_sixth_write(self):
+        responses = [SimpleNamespace(output=[SimpleNamespace(
+            type="function_call", name="create_supplier", arguments=json.dumps({"name": f"Supplier {number}"}),
+            call_id=f"call-{number}")], output_text="") for number in range(6)]
+        responses.append(SimpleNamespace(output=[], output_text="Five suppliers were saved."))
+        outputs = [json.dumps({"id": number + 1, "name": f"Supplier {number}"}) for number in range(5)]
+        with patch("app.assistant.agent.reference_context", return_value="Current lists"), \
+             patch("app.assistant.agent.run_tool", side_effect=outputs) as tool, \
+             patch("app.assistant.agent.OpenAI") as client:
+            client.return_value.responses.create.side_effect = responses
+            answer = query_assistant("Create six suppliers")
+            self.assertEqual(answer.created_count, 5)
+            self.assertIn("Supplier name 'Supplier 5': Limit of 5", answer.reply)
+            self.assertEqual(tool.call_count, 5)
+
+    def test_api_exposes_reply_and_created_count(self):
+        with patch.dict("os.environ", {"ADMIN_USERNAME": "test", "ADMIN_PASSWORD": "test"}), \
+             patch("app.api.routes.query_assistant", return_value=AssistantReply(reply="Saved", created_count=2)):
+            response = TestClient(app).post("/api/assistant/query", json={"query": "Create records"}, auth=("test", "test"))
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {"reply": "Saved", "created_count": 2})
+
+    def test_cli_prints_assistant_reply(self):
+        with patch("app.cli.query_assistant", return_value=AssistantReply(reply="Saved two invoices.", created_count=2)):
+            result = CliRunner().invoke(cli, ["assistant", "Create two invoices"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Saved two invoices.", result.output)

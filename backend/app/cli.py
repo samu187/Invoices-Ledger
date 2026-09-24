@@ -37,7 +37,7 @@ app.add_typer(payments, name="payments")
 @app.command("assistant")
 def assistant_query(query: str = typer.Argument(..., help="Ask the bookkeeping assistant.")):
     """Send a query to the shared assistant service."""
-    typer.echo(query_assistant(query))
+    typer.echo(query_assistant(query).reply)
 
 
 def print_payment(row):

@@ -10,7 +10,7 @@ from app.db import get_db
 from app.assistant.agent import query_assistant
 from app.models import Account, Invoice, JournalEntry, Payment
 from app.schemas import (
-    AssistantQuery, InvoiceCreate, InvoiceCreated, InvoiceDetail, InvoicePaymentsRead, InvoiceRead,
+    AssistantQuery, AssistantReply, InvoiceCreate, InvoiceCreated, InvoiceDetail, InvoicePaymentsRead, InvoiceRead,
     PaymentCreate, PaymentCreated, SupplierCreate, SupplierRead,
     AccountRead, AccountDetail, JournalHeader, JournalRead, OutstandingRead,
     PaymentRead, PaymentDetail, TrialBalanceRead, ProfitLossRead,
@@ -21,7 +21,7 @@ from app.services import accounts, invoices, journals, payments, suppliers
 router = APIRouter()
 
 
-@router.post("/assistant/query")
+@router.post("/assistant/query", response_model=AssistantReply)
 def assistant_query(data: AssistantQuery):
     try:
         return query_assistant(data.query, [message.model_dump() for message in data.history])

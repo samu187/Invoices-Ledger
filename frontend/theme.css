@@ -63,6 +63,17 @@ body {
   z-index: 210;
   background: white;
 }
+.assistant-markdown { font-size: var(--mantine-font-size-sm); line-height: 1.5; }
+.assistant-markdown p { margin: 0 0 8px; }
+.assistant-markdown > :last-child { margin-bottom: 0; }
+.assistant-markdown ul, .assistant-markdown ol { margin: 0 0 8px; padding-left: 20px; }
+.assistant-markdown ul { list-style: disc; }
+.assistant-markdown ol { list-style: decimal; }
+.assistant-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 8px 0; }
+.assistant-markdown th, .assistant-markdown td { border: 1px solid #dce1e8; padding: 5px 8px; text-align: left; white-space: nowrap; }
+.assistant-markdown th { background: #f5f7fd; }
+.assistant-markdown pre { max-width: 100%; overflow-x: auto; }
+.assistant-markdown :not(pre) > code { overflow-wrap: anywhere; }
 @media (max-width: 47.99em) {
   .bookkeeper-chat { left: 50%; bottom: 12px; width: calc(100vw - 24px); }
 }

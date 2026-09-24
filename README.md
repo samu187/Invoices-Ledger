@@ -5,11 +5,6 @@ A focused accounting application for recording multi-currency supplier invoices,
 ![Invoice Ledger demo](docs/demo.gif)
 
 
-*Outstanding balance for each invoice*
-
-![Invoice Ledger screenshot](docs/outstanding.png)
-
-
 ## Features
 
 - Record GBP, EUR, and USD supplier invoices with VAT.
@@ -19,9 +14,17 @@ A focused accounting application for recording multi-currency supplier invoices,
 - Calculate realised FX gains and losses when foreign invoices are settled.
 - Inspect linked journals, account ledgers, input VAT, P&L, and trial balance reports.
 - Use the same accounting services through the web application and CLI.
+- Ask the AI assistant about records and have it create suppliers, invoices, or payments.
 - Persist data in PostgreSQL across restarts and browsers.
 
 See [accounting conventions](docs/conventions.md) for the demo’s VAT, currency, and posting assumptions.
+
+## AI assistant
+
+The web chat uses OpenAI function tools over the same accounting services as the forms and CLI. The assistant can inspect suppliers, accounts, journals, invoices, payments, and reference FX rates. It can create up to five records in one request, then reports saved IDs and failed attempts. Each record commits separately, so earlier records remain saved if a later one fails. Creation has no confirmation step.
+
+![AI Bot demo](docs/ai_demo.gif)
+
 
 ## Tech stack
 
@@ -67,7 +70,7 @@ uv run ledger --help
 uv run ledger assistant "Which invoices are outstanding?"
 ```
 
-Set `OPENAI_API_KEY` in `backend/.env` for the assistant, and set it as a Railway service variable for the hosted app. `OPENAI_MODEL` optionally overrides the default `gpt-6-luna`. The assistant is available in the web chat, CLI, and `POST /api/assistant/query`. It can read records and directly create suppliers, invoices, and payments when asked. Creation has no confirmation step and handles one record per request.
+Set `OPENAI_API_KEY` in `backend/.env` for the assistant, and set it as a Railway service variable for the hosted app. `OPENAI_MODEL` optionally overrides the default `gpt-6-luna`. The assistant is available in the web chat, CLI, and `POST /api/assistant/query`.
 
 To stop PostgreSQL without deleting its data:
 
