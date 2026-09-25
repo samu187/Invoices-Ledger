@@ -68,7 +68,10 @@ The CLI uses the same database and accounting services:
 ```bash
 uv run ledger --help
 uv run ledger assistant "Which invoices are outstanding?"
+uv run ledger accounts pnl --from 2026-01-01 --to 2026-12-31 --export pnl-2026.xlsx
 ```
+
+The P&L command prints the report and optionally saves an Excel workbook. Choose a new `.xlsx` path; it will not overwrite an existing file.
 
 Set `OPENAI_API_KEY` in `backend/.env` for the assistant, and set it as a Railway service variable for the hosted app. `OPENAI_MODEL` optionally overrides the default `gpt-6-luna`. The assistant is available in the web chat, CLI, and `POST /api/assistant/query`.
 

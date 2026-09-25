@@ -87,6 +87,7 @@ async def database_error(request, exc):
 
 
 app.include_router(router, prefix="/api")
+ 
 if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

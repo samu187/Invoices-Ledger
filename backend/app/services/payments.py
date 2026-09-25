@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.models import Account, Company, Invoice, JournalEntry, JournalLine, Payment, Supplier
 from app.schemas import PaymentCreate
 from app.services.journals import add_journal
-
+from app.services.journals import get_journal
 
 def create_payment(db: Session, data: PaymentCreate) -> dict:
     with db.begin():
@@ -71,6 +71,8 @@ def create_payment(db: Session, data: PaymentCreate) -> dict:
         bank_total = base_amount + data.bank_fees
         if base_amount <= 0 or bank_total >= Decimal("10000000000000000"):
             raise ValueError("Converted payment must be at least GBP 0.01 and fit the account amount limit.")
+
+        # FX gain or loss!
         fx = base_amount - released
         lines = [JournalLine(account_id=accounts[data.bank_account_code].id, debit=0, credit=bank_total)]
         if released > 0:
@@ -112,11 +114,11 @@ def list_payments(db: Session) -> list[dict]:
         .where(Supplier.company_id == 1)
         .order_by(Payment.payment_date, Payment.id)
     ).mappings()
+    # TODO: Add pagination and filtering by date range, supplier, and invoice number.
     return [dict(row) for row in rows]
 
 
 def get_payment(db: Session, payment_id: int) -> dict:
-    from app.services.journals import get_journal
 
     payment = next((row for row in list_payments(db) if row["id"] == payment_id), None)
     if payment is None:

@@ -2,6 +2,7 @@
 
 import os
 from datetime import date, timedelta
+from pathlib import Path
 import typer
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
@@ -11,9 +12,11 @@ from app.services.payments import create_payment, list_payments, get_payment
 from app.services.fx_rates import get_rates
 from app.services.suppliers import create_supplier, list_suppliers
 from app.services.accounts import list_accounts, get_account_activity, get_trial_balance, get_profit_and_loss
+from app.services.report_exports import profit_and_loss_xlsx
 from app.services.journals import list_journals, get_journal
 from app.services.invoices import create_invoice, list_invoices, get_invoice, get_invoice_payments, get_outstanding_invoices
 from app.assistant.agent import query_assistant
+from app.db import SessionLocal, seed_database
 
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)
@@ -42,6 +45,36 @@ def assistant_query(query: str = typer.Argument(..., help="Ask the bookkeeping a
 
 def print_payment(row):
     typer.echo(f"Payment #{row['id']} | {row['payment_date']} | {row['supplier']} | Invoice #{row['invoice_id']} ({row['invoice_number']}) | {row['currency']} {row['amount']:,.2f} | {row['bank_code']} {row['bank_name']} | Rate {row['exchange_rate']} GBP/{row['currency']} | GBP settlement {row['base_amount']:,.2f} | Fees {row['bank_fee']:,.2f} | Withdrawn {row['bank_total']:,.2f}")
+
+
+@payments.command("add")
+def payment_add(
+    invoice_id: int = typer.Option(..., "--invoice", prompt="Invoice ID"),
+    currency: str = typer.Option(..., "--currency", prompt="Invoice currency (GBP/EUR/USD)"),
+    amount: str = typer.Option(..., "--amount", prompt="Amount settled in invoice currency"),
+    bank_account: str = typer.Option("1000", "--bank-account", help="1000 = HSBC GBP (only option)."),
+    exchange_rate: str | None = typer.Option(None, "--exchange-rate", help="GBP per unit of invoice currency; required for EUR/USD."),
+    bank_fees: str = typer.Option("0", "--bank-fees", help="Additional bank fees in GBP."),
+    payment_date: str | None = typer.Option(None, "--date", help="YYYY-MM-DD; defaults to today."),
+    reference: str | None = typer.Option(None, "--reference"),
+    request_id: str | None = typer.Option(None, "--request-id", help="Reuse the same UUID when retrying a payment to prevent duplicates."),
+):
+    """Record a payment and its balanced journal, including fees and FX."""
+    values = dict(invoice_id=invoice_id, currency=currency.upper(), amount=amount,
+                  bank_account_code=bank_account, exchange_rate=exchange_rate,
+                  bank_fees=bank_fees or "0", reference=reference)
+    if payment_date is not None:
+        values["payment_date"] = payment_date
+    if request_id is not None:
+        values["request_id"] = request_id
+    # Validate and convert input following schema
+    data = PaymentCreate(**values)
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        result = create_payment(db, data)
+    typer.echo(f"Created payment #{result['payment_id']} and journal #{result['journal_id']}. Paid from HSBC: GBP {result['bank_total']:,.2f} (including fees).")
+
 
 
 @payments.command("list")
@@ -92,6 +125,7 @@ def invoice_outstanding():
 def profit_and_loss(
     start: str = typer.Option(..., "--from", help="Start date YYYY-MM-DD, inclusive."),
     end: str = typer.Option(..., "--to", help="End date YYYY-MM-DD, inclusive."),
+    export: Path | None = typer.Option(None, "--export", help="Write an Excel report to this .xlsx path."),
 ):
     """Show income and expenses by posting date, in GBP."""
     start_date, end_date = date.fromisoformat(start), date.fromisoformat(end)
@@ -105,6 +139,16 @@ def profit_and_loss(
     if not report["rows"]:
         typer.echo("No income or expense postings in this period.")
     typer.echo(f"Net {'profit' if report['profit'] >= 0 else 'loss'}: GBP {abs(report['profit']):,.2f}")
+    if export is not None:
+        if export.suffix.lower() != ".xlsx":
+            raise ValueError("Export path must end in .xlsx.")
+        workbook = profit_and_loss_xlsx(report, start_date, end_date)
+        try:
+            with export.open("xb") as file:
+                file.write(workbook)
+        except FileExistsError:
+            raise ValueError(f"Export file already exists: {export}") from None
+        typer.echo(f"Exported P&L to {export}")
 
 
 @accounts.command("trial-balance")
@@ -119,35 +163,6 @@ def trial_balance():
         typer.echo(f"{row['code']:<8} {row['name']:<28} {row['debit']:>14,.2f} {row['credit']:>14,.2f}")
     typer.echo(f"{'TOTAL':<37} {report['total_debit']:>14,.2f} {report['total_credit']:>14,.2f}")
     typer.echo("Balanced." if report["balanced"] else "UNBALANCED: investigate the difference.")
-
-
-@payments.command("add")
-def payment_add(
-    invoice_id: int = typer.Option(..., "--invoice", prompt="Invoice ID"),
-    currency: str = typer.Option(..., "--currency", prompt="Invoice currency (GBP/EUR/USD)"),
-    amount: str = typer.Option(..., "--amount", prompt="Amount settled in invoice currency"),
-    bank_account: str = typer.Option("1000", "--bank-account", help="1000 = HSBC GBP (only option)."),
-    exchange_rate: str | None = typer.Option(None, "--exchange-rate", help="GBP per unit of invoice currency; required for EUR/USD."),
-    bank_fees: str = typer.Option("0", "--bank-fees", help="Additional bank fees in GBP."),
-    payment_date: str | None = typer.Option(None, "--date", help="YYYY-MM-DD; defaults to today."),
-    reference: str | None = typer.Option(None, "--reference"),
-    request_id: str | None = typer.Option(None, "--request-id", help="Reuse the same UUID when retrying a payment to prevent duplicates."),
-):
-    """Record a payment and its balanced journal, including fees and FX."""
-    values = dict(invoice_id=invoice_id, currency=currency.upper(), amount=amount,
-                  bank_account_code=bank_account, exchange_rate=exchange_rate,
-                  bank_fees=bank_fees or "0", reference=reference)
-    if payment_date is not None:
-        values["payment_date"] = payment_date
-    if request_id is not None:
-        values["request_id"] = request_id
-    data = PaymentCreate(**values)
-    from app.db import SessionLocal
-
-    with SessionLocal() as db:
-        result = create_payment(db, data)
-    typer.echo(f"Created payment #{result['payment_id']} and journal #{result['journal_id']}. Paid from HSBC: GBP {result['bank_total']:,.2f} (including fees).")
-
 
 
 @invoices.command("add")
@@ -388,7 +403,6 @@ def seed(reset: bool = typer.Option(False, "--reset", help="Delete all applicati
     """Add company, accounts, suppliers, and opening funding once."""
     if reset:
         typer.confirm("Delete ALL application data in the configured database and reseed?", abort=True)
-    from app.db import SessionLocal, seed_database
 
     with SessionLocal() as db:
         created = seed_database(db, reset=reset)
